@@ -536,7 +536,6 @@ def gocutplane(log, all_data):
   oldobj                             = 1
   gap                                = 1e20
 
-  #mc = 0 mincut parameter
 
   while (all_data['round'] <= all_data['max_rounds']) and (all_data['runtime'] <= all_data['max_time']) and (all_data['ftol_counter'] <= all_data['ftol_iterates']):
     
