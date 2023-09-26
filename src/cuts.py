@@ -1,3 +1,10 @@
+###############################################################################                  
+# This code was written and is being maintained by Matias Villagra                               
+# License? Supervised by Dan? Part of the code comes from the kit (e.g. the                      
+# reader, etc...                                                                                 
+############################################################################### 
+
+
 from myutils import breakexit
 from log import danoLogger
 import time
@@ -637,7 +644,7 @@ def limit_cuts(log,all_data):
 def drop_limit(log,all_data):
     
     log.joint('\n')
-    log.joint(' **** drop limit-envelope cuts ****\n')
+    log.joint(' **** drop Limit-envelope cuts ****\n')
     log.joint('\n')
 
     themodel                = all_data['themodel']
@@ -759,7 +766,7 @@ def jabr_cuts(log,all_data):
     
     log.joint(' computing Jabr-envelope cuts ... \n')
 
-    num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction'] )
+    num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction_jabr'] )
     most_violated       = dict(sorted(violated.items(), key = lambda x: x[1], reverse = True)[:num_selected])
     most_violated_count = 0
 
@@ -835,12 +842,12 @@ def jabr_cuts(log,all_data):
     log.joint(' number violated Jabrs ' + str(violated_count) + ' number Jabr-envelope cuts added ' + str(most_violated_count) + '\n')
     log.joint(' max error ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
 
-    all_data['most_violated_branch']   = most_violated_branch
-    all_data['max_error']              = max_error
-    all_data['ID_jabr_cuts']          += most_violated_count
-    all_data['num_jabr_cuts_added']    = most_violated_count
-    all_data['num_jabr_cuts']         += most_violated_count
-    all_data['num_jabr_cuts_rnd'][rnd] = most_violated_count
+    all_data['most_violated_branch_jabr'] = most_violated_branch
+    all_data['max_error_jabr']            = max_error
+    all_data['ID_jabr_cuts']             += most_violated_count
+    all_data['num_jabr_cuts_added']       = most_violated_count
+    all_data['num_jabr_cuts']            += most_violated_count
+    all_data['num_jabr_cuts_rnd'][rnd]    = most_violated_count
 
 def drop_jabr(log,all_data):
     
@@ -936,23 +943,26 @@ def add_cuts(log,all_data):
     numlines  = len(lines)
     theround  = lines[0].split()[3]
     firstline = lines[1].split()
-    jabr     = 1
+    jabr      = 1
     
     log.joint(' loading cuts from round ' + str(theround) + '\n')
 
     if firstline[0] == '#Jabr-envelope':
         numjabrcuts = firstline[3]
+        all_data['addcuts_numjabrcuts'] = numjabrcuts
         log.joint(' number of Jabr-envelope cuts = ' + str(numjabrcuts) + '\n')
     elif firstline[0] == '#i2-envelope':
         jabr      = 0
         i2        = 1
         numi2cuts = firstline[3]
+        all_data['addcuts_numi2cuts'] = numi2cuts
         log.joint(' no Jabr-envelope cuts to add\n')
         log.joint(' number of i2-envelope cuts = ' + str(numi2cuts) + '\n')
     elif firstline[0] == '#limit-envelope':
         jabr         = 0
         i2           = 0
         numlimitcuts = firstline[3]
+        all_data['addcuts_numlimitcuts'] = numlimitcuts
         log.joint(' no Jabr nor i2-envelope cuts to add\n')
         log.joint(' number of limit-envelope cuts = ' + str(numlimitcuts) + '\n')
     else:
@@ -988,6 +998,7 @@ def add_cuts(log,all_data):
         thisline = lines[linenum].split()
         if thisline[0] == '#i2-envelope' and jabr:
             numi2cuts = int(thisline[3])
+            all_data['addcuts_numi2cuts'] = numi2cuts
             log.joint(' number of i2-envelope cuts = ' + str(numi2cuts) + '\n')
             linenum += 1
             jabr = 0
@@ -996,6 +1007,7 @@ def add_cuts(log,all_data):
 
         elif thisline[0] == '#limit-envelope' and i2:
             numlimcuts = int(thisline[3])
+            all_data['addcuts_numlimitcuts'] = numlimcuts
             log.joint(' number of limit-envelope cuts = ' + str(numlimcuts) + '\n')
             linenum += 1
             i2       = 0

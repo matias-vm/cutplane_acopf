@@ -463,7 +463,7 @@ def readvoltsfile(log, all_data):
           elif thisline[0] == 'END':
             break
           else:
-            print ("illegal input "+ thisline[0] + "\n")
+            log.joint("illegal input "+ thisline[0] + "\n")
             sys.exit("bye")
 
     log.joint("read " + str(numread) + " input voltages \n")
@@ -505,7 +505,7 @@ def readflowsfile(log, all_data):
           elif thisline[0] == 'END':
             break
           else:
-            print ("illegal input " + thisline[0] + " on line " + str(thisline) + "\n")
+            log.joint("illegal input " + thisline[0] + " on line " + str(thisline) + "\n")
             sys.exit("bye")
 
     log.joint("read " + str(numread) + " input flows\n")

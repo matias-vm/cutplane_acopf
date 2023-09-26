@@ -1,3 +1,9 @@
+###############################################################################
+# This code was written and is being maintained by Matias Villagra
+# License? Supervised by Dan? Part of the code comes from the kit (e.g. the
+# reader, etc...
+###############################################################################
+
 import sys
 import math
 from log import danoLogger
@@ -39,10 +45,6 @@ def gocutplane(log, all_data):
 
   if all_data['knitro_sol']:
     getsol_knitro(log,all_data)
-
-  if all_data['casename'] == 'case13659pegase':
-    breakexit('check function check13659')
-    check13659(log,all_data)
 
   ################## VARIABLES ################## 
 
@@ -846,7 +848,7 @@ def gocutplane(log, all_data):
 
     ################## CUT MANAGEMENT ##################
 
-    if all_data['jabrcuts'] and all_data['dropjabrs'] and (all_data['round'] >= all_data['cut_age_limit']):
+    if all_data['jabrcuts'] and all_data['dropjabr'] and (all_data['round'] >= all_data['cut_age_limit']):
       drop_jabr(log,all_data)
 
     if all_data['i2cuts'] and all_data['dropi2'] and (all_data['round'] >= all_data['cut_age_limit']):
@@ -909,6 +911,13 @@ def gocutplane(log, all_data):
     #   qloss_gap = 100*(mp_sum_qnetlosses - all_data['total_reactive_losses'])/mp_sum_qnetlosses
     #   log.joint(' net reactive loss gap (percent) = %g\n' % qloss_gap)
     log.joint(' -- CUTS --\n')
+    if all_data['addcuts']:
+      log.joint(' number of precomputed Jabr-envelope cuts = ' 
+                + str(all_data['addcuts_numjabrcuts']) + '\n')
+      log.joint(' number of precomputed i2-envelope cuts = ' 
+                + str(all_data['addcuts_numi2cuts']) + '\n')
+      log.joint(' number of precomputed limit-envelope cuts = ' 
+                + str(all_data['addcuts_numlimitcuts']) + '\n')  
     log.joint(' cut age limit = %g\n' % all_data['cut_age_limit'])
     log.joint(' parallel-cuts threshold = %g\n' % all_data['threshold_dotprod'] )
     log.joint(' initial threshold = %g\n' % all_data['initial_threshold'] )
@@ -917,10 +926,10 @@ def gocutplane(log, all_data):
       log.joint(' -- Jabr-envelope cuts --\n')
       log.joint(' current number of Jabr-envelope cuts = %g\n' % all_data['num_jabr_cuts'])
       log.joint(' number of Jabr-envelope cuts added in current round = %g\n' % all_data['num_jabr_cuts_added'] )
-      log.joint(' top percent of most violated Jabr-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction']) )
-      log.joint(' max error (Jabrs) in current round = %g\n' % all_data['max_error'] )
+      log.joint(' top percent of most violated Jabr-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_jabr']) )
+      log.joint(' max error (Jabrs) in current round = %g\n' % all_data['max_error_jabr'] )
       log.joint(' current Jabr-envelope cuts threshold = %g\n' % all_data['threshold'] )
-    if all_data['dropjabrs']:
+    if all_data['dropjabr']:
       log.joint(' number of Jabr-envelope cuts dropped in current round = %g\n' % all_data['num_jabr_cuts_dropped'] )
 
     if all_data['i2cuts']:
@@ -971,7 +980,7 @@ def gocutplane(log, all_data):
     themodel.update()
 
     log.joint('\n')
-    log.joint(' model updated with new Jabr,i2, and limit-cuts and dropped slack-and-old cuts (if any)\n' )
+    log.joint(' model updated with new cuts\n')
     log.joint('\n')
 
     ################## WRITE CUTS ##################
@@ -1011,7 +1020,7 @@ def gocutplane(log, all_data):
     all_data['round'] += 1
 
 
-######################################################################
+    ###########################################################
 
 def fixflows(log,all_data):
 

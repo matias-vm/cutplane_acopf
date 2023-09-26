@@ -36,11 +36,15 @@ def read_config(log, filename):
     objective_cuts               = 0    
     loud_cuts                    = 0
 
+
+
+    most_violated_fraction_loss  = 1
     
     jabr_inequalities            = 0
     i2_inequalities              = 0
     limit_inequalities           = 0
-    loss_inequalities           = 0
+    loss_inequalities            = 0
+
 
 
 
@@ -49,8 +53,8 @@ def read_config(log, filename):
     tolerance                    = 1e-5
     threshold_objcuts            = 1e-5
     threshold_dotprod            = 5e-1
-    most_violated_fraction       = 1
-    dropjabrs                    = 0
+    most_violated_fraction_jabr  = 1
+    dropjabr                     = 0
     droploss                     = 0
     dropi2                       = 0
     cut_age_limit                = 20
@@ -62,7 +66,6 @@ def read_config(log, filename):
     cut_analysis                 = 0
 
     most_violated_fraction_i2    = 1
-    i2_def_threshold             = 1e-3
     mincut                       = 0
     mincut_active                = 0
     mincut_reactive              = 0
@@ -130,8 +133,8 @@ def read_config(log, filename):
             elif thisline[0] == 'cut_analysis':
                 cut_analysis = 1
                 
-            elif thisline[0] == 'dropjabrs':
-                dropjabrs = 1
+            elif thisline[0] == 'dropjabr':
+                dropjabr     = 1
 
             elif thisline[0] == 'droploss':
                 droploss = 1
@@ -153,9 +156,6 @@ def read_config(log, filename):
 
             elif thisline[0] == 'i2cuts':
                 i2cuts           = 1
-
-            elif thisline[0] == 'i2_def_threshold':
-                i2_def_threshold = float(thisline[1])
 
             elif thisline[0] == 'most_violated_fraction_i2':
                 most_violated_fraction_i2 = float(thisline[1])                
@@ -190,8 +190,8 @@ def read_config(log, filename):
             elif thisline[0] == 'mincut_switch':
                 mincut_switch   = 1
 
-            elif thisline[0] == 'most_violated_fraction':
-                most_violated_fraction = float(thisline[1])
+            elif thisline[0] == 'most_violated_fraction_jabr':
+                most_violated_fraction_jabr = float(thisline[1])
 
             elif thisline[0] == 'primal_bound':
                 primal_bound = float(thisline[1])
@@ -245,10 +245,10 @@ def read_config(log, filename):
                 loss_inequalities  = 1
 
             elif thisline[0] == 'most_violated_fraction_loss':
-                most_violated_fraction_loss  = float(thisline[1])
+                most_violated_fraction_loss = float(thisline[1])
 
             elif thisline[0] == 'FeasibilityTol':
-                FeasibilityTol  = float(thisline[1])
+                FeasibilityTol = float(thisline[1])
 
             elif thisline[0] == 'writecuts':
                 writecuts  = 1
@@ -305,7 +305,7 @@ def read_config(log, filename):
                 break
                 
             else:
-                sys.exit("illegal input " + thisline[0] + "bye")
+                sys.exit("illegal input " + thisline[0] + " bye")
 
 
         linenum += 1
@@ -358,19 +358,19 @@ def read_config(log, filename):
 
     all_data['jabrcuts'] = jabrcuts
     if jabrcuts:
-        all_data['most_violated_fraction'] = most_violated_fraction
-        all_data['ID_jabr_cuts']           = 0
-        all_data['jabr_cuts']              = {}
-        all_data['num_jabr_cuts']          = 0
-        all_data['num_jabr_cuts_rnd']      = {}
-        all_data['num_jabr_cuts_added']    = 0
-        all_data['num_jabr_cuts_dropped']  = 0
-        all_data['dropped_jabrs']          = []    
-        all_data['jabr_cuts_info']         = {}
-        all_data['jabr_cuts_info_updated'] = {}
-        all_data['max_error']              = 0
+        all_data['most_violated_fraction_jabr'] = most_violated_fraction_jabr
+        all_data['ID_jabr_cuts']                = 0
+        all_data['jabr_cuts']                   = {}
+        all_data['num_jabr_cuts']               = 0
+        all_data['num_jabr_cuts_rnd']           = {}
+        all_data['num_jabr_cuts_added']         = 0
+        all_data['num_jabr_cuts_dropped']       = 0
+        all_data['dropped_jabrs']               = []    
+        all_data['jabr_cuts_info']              = {}
+        all_data['jabr_cuts_info_updated']      = {}
+        all_data['max_error_jabr']              = 0
 
-    all_data['dropjabrs']              = dropjabrs
+    all_data['dropjabr']               = dropjabr
     all_data['jabr_validity']          = jabr_validity
 
     all_data['limitcuts'] = limitcuts
@@ -412,7 +412,6 @@ def read_config(log, filename):
         all_data['i2_cuts_info_updated']      = {}
         all_data['threshold_i2']              = threshold_i2
         all_data['dropped_i2']                = []
-        all_data['i2_def_threshold']          = i2_def_threshold
         all_data['max_error_i2']              = 0
 
     all_data['dropi2']                    = dropi2
@@ -488,21 +487,15 @@ if __name__ == '__main__':
     mylogfile = "main.log"
 
     if len(sys.argv) == 3:
-        #mylogfile = 'logfiles/' + sys.argv[2]
-        mylogfile = sys.argv[2] #trial.sh
+        mylogfile = sys.argv[2]
 
     log = danoLogger(mylogfile)
     stateversion(log)
 
-    all_data = read_config(log,sys.argv[1])    
+    all_data       = read_config(log,sys.argv[1])    
     all_data['T0'] = T0
 
     readcode = reader.readcase(log,all_data,all_data['casefilename'])
-    #readcode = newreader.readcase(log,all_data,all_data['casefilename'])    
-    #readcode = pglibreader.readcase(log,all_data,all_data['casefilename'])
-    #readcode = reader_pertline.readcase(log,all_data,all_data['casefilename'])
-    #breakexit('next instance')
-    #exit(0)
 
     gocutplane(log,all_data)
     
