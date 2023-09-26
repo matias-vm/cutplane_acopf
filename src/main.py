@@ -27,7 +27,8 @@ def read_config(log, filename):
     lpfilename_cuts              = ""
     linenum                      = 0
 
-    
+    i2                           = 0
+
     jabrcuts                     = 0
     i2cuts                       = 0
     losscuts                     = 0
@@ -35,7 +36,7 @@ def read_config(log, filename):
     objective_cuts               = 0    
     loud_cuts                    = 0
 
-
+    
     jabr_inequalities            = 0
     i2_inequalities              = 0
     limit_inequalities           = 0
@@ -297,6 +298,9 @@ def read_config(log, filename):
             elif thisline[0] == 'loud_cuts':
                 loud_cuts     = 1
 
+            elif thisline[0] == 'i2':
+                i2            = 1
+
             elif thisline[0] == 'END':
                 break
                 
@@ -340,7 +344,7 @@ def read_config(log, filename):
     all_data['tight_cuts_fraction'] = {}
     
     all_data['cut_age_limit'] = cut_age_limit
-    all_data['droploss'] = droploss
+
 
     
     all_data['linear_objective']   = linear_objective
@@ -362,11 +366,11 @@ def read_config(log, filename):
         all_data['num_jabr_cuts_added']    = 0
         all_data['num_jabr_cuts_dropped']  = 0
         all_data['dropped_jabrs']          = []    
-        all_data['dropjabrs']              = dropjabrs
         all_data['jabr_cuts_info']         = {}
         all_data['jabr_cuts_info_updated'] = {}
         all_data['max_error']              = 0
 
+    all_data['dropjabrs']              = dropjabrs
     all_data['jabr_validity']          = jabr_validity
 
     all_data['limitcuts'] = limitcuts
@@ -378,17 +382,24 @@ def read_config(log, filename):
         all_data['num_limit_cuts_rnd']              = {}
         all_data['num_limit_cuts_added']            = 0
         all_data['num_limit_cuts_dropped']          = 0
-        all_data['droplimit']                       = droplimit
         all_data['limit_cuts_info']                 = {}
         all_data['limit_cuts_info_updated']         = {}
         all_data['threshold_limit']                 = threshold_limit
         all_data['dropped_limit']                   = []
     
         all_data['max_error_limit']                 = 0
-    
+
+    all_data['droplimit']                       = droplimit
     all_data['limit_validity']                  = limit_validity    
 
-    all_data['i2cuts'] = i2cuts
+
+    all_data['i2cuts']                              = i2cuts
+    all_data['i2']                                  = i2
+
+    if (all_data['i2cuts'] == 1) or (all_data['i2_inequalities']):
+        all_data['i2'] = 1
+        
+
     if i2cuts:
         all_data['most_violated_fraction_i2'] = most_violated_fraction_i2
         all_data['ID_i2_cuts']                = 0
@@ -397,15 +408,14 @@ def read_config(log, filename):
         all_data['num_i2_cuts_rnd']           = {}
         all_data['num_i2_cuts_added']         = 0
         all_data['num_i2_cuts_dropped']       = 0
-        all_data['dropi2']                    = dropi2
         all_data['i2_cuts_info']              = {}
         all_data['i2_cuts_info_updated']      = {}
         all_data['threshold_i2']              = threshold_i2
         all_data['dropped_i2']                = []
         all_data['i2_def_threshold']          = i2_def_threshold
-
         all_data['max_error_i2']              = 0
 
+    all_data['dropi2']                    = dropi2
     all_data['i2_validity']               = i2_validity
         
     all_data['primal_bound']                  = primal_bound
@@ -452,6 +462,7 @@ def read_config(log, filename):
 
         all_data['max_error_loss']              = 0
 
+    all_data['droploss'] = droploss
     all_data['loss_validity']               = loss_validity
 
 

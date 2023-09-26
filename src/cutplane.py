@@ -182,7 +182,7 @@ def gocutplane(log, all_data):
       varcount +=4 
 
   #i2 variables
-  if all_data['i2cuts'] or all_data['i2_inequalities']:
+  if all_data['i2']:
     i2var_f = {}
     #i2var_t = {}
 
@@ -222,7 +222,7 @@ def gocutplane(log, all_data):
   all_data['Qvar_f']      = Qvar_f
   all_data['Qvar_t']      = Qvar_t
 
-  if all_data['i2cuts'] or all_data['i2_inequalities']:
+  if all_data['i2']:
     all_data['i2var_f']   = i2var_f
     #all_data['i2var_t']  = i2var_f
 
@@ -449,7 +449,7 @@ def gocutplane(log, all_data):
   log.joint('   %d power injection definitions added\n'%count)
   
   #definition i2 variables
-  if all_data['i2cuts'] or all_data['i2_inequalities']:
+  if all_data['i2']:
     constrcount += i2_def(log,all_data)
 
   #active power loss-inequalities
@@ -724,7 +724,7 @@ def gocutplane(log, all_data):
       solfile.writelines(Plines)
       solfile.writelines(Qlines)
 
-      if all_data['i2cuts']:
+      if all_data['i2']:
         i2fvalues[branch] = i2var_f[branch].x
         i2line            = [i2var_f[branch].varname + ' = ',str(i2fvalues[branch]),'\n']   
         solfile.writelines(i2line)
@@ -768,7 +768,7 @@ def gocutplane(log, all_data):
     #all_data['Qinjvalues']              = Qinjvalues
 
 
-    if all_data['i2cuts']:
+    if all_data['i2']:
       all_data['i2fvalues'] = i2fvalues
       #all_data['i2tvalues'] = i2tvalues
 
@@ -930,8 +930,8 @@ def gocutplane(log, all_data):
       log.joint(' top percent of most violated i2-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_i2']) )
       log.joint(' max error (i2) in current round = %g\n' % all_data['max_error_i2'] )
       log.joint(' current i2-envelope threshold = %g\n' % all_data['threshold_i2'] )
-      if all_data['dropi2']:
-        log.joint(' number of i2-envelope cuts dropped in current round = %g\n' % all_data['num_i2_cuts_dropped'] )
+    if all_data['dropi2']:
+      log.joint(' number of i2-envelope cuts dropped in current round = %g\n' % all_data['num_i2_cuts_dropped'] )
 
     if all_data['limitcuts']:
       log.joint(' -- Limit-envelope cuts --\n')
@@ -940,8 +940,8 @@ def gocutplane(log, all_data):
       log.joint(' top percent of most violated limit-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_limit']) )
       log.joint(' max error (limit) in current round = %g\n' % all_data['max_error_limit'] )
       log.joint(' initial limit-envelope threshold = %g\n' % all_data['threshold_limit'] )
-      if all_data['droplimit']:
-        log.joint(' number of limit-envelope cuts dropped in current round = %g\n' % all_data['num_limit_cuts_dropped'] )
+    if all_data['droplimit']:
+      log.joint(' number of limit-envelope cuts dropped in current round = %g\n' % all_data['num_limit_cuts_dropped'] )
 
     if all_data['loss_inequalities']:
       log.joint(' -- loss inequalities --\n')

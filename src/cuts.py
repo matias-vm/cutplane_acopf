@@ -967,18 +967,15 @@ def add_cuts(log,all_data):
     IDtoCountmap   = all_data['IDtoCountmap']
     cvar           = all_data['cvar']
     svar           = all_data['svar']
+    Pvar_f         = all_data['Pvar_f']
+    Qvar_f         = all_data['Qvar_f']
+    Pvar_t         = all_data['Pvar_t']
+    Qvar_t         = all_data['Qvar_t']    
     FeasibilityTol = all_data['FeasibilityTol']
 
-    if all_data['i2cuts']:
-        Pvar_f  = all_data['Pvar_f']
-        Qvar_f  = all_data['Qvar_f']
+    if all_data['i2']:
         i2var_f = all_data['i2var_f']
     
-    if all_data['limitcuts']:
-        Pvar_f  = all_data['Pvar_f']
-        Qvar_f  = all_data['Qvar_f']
-        Pvar_t  = all_data['Pvar_t']
-        Qvar_t  = all_data['Qvar_t']
         
     # if jabr:
     #     log.joint(' adding Jabr-envelope cuts ...\n')
