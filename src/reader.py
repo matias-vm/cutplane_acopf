@@ -169,7 +169,7 @@ def readcase(log, all_data, casefilename):
 
     t1 = time.time()
 
-    log.joint("read time: " + str(t1 - t0) + "\n")
+    log.joint("read time: " + str(t1 - t0) + "\n\n")
 
 
 
@@ -295,9 +295,11 @@ def readcase_thrulines(log, all_data, lines):
 
                 if status <= 0:
                   status = 0
+                  # log.joint(' genid ' + str(gencount) + ' at bus ' + str(nodeID) 
+                  #           + ' buscount ' + str(IDtoCountmap[nodeID]) + ' status ' 
+                  #           + str(status) + '\n')
                 else:
                   status = 1
-
 
                 #log.joint("generator in bus ID " + str(nodeID) )
                 if nodeID in IDtoCountmap.keys():
@@ -366,23 +368,21 @@ def readcase_thrulines(log, all_data, lines):
                 id_f = IDtoCountmap[f]
                 id_t = IDtoCountmap[t]
                 
-
-                if status == 0:
-                  log.joint(' f ' + str(f) + ' t ' + str(t) + '\n')
-                  log.joint(' the status is ' + str(status) + '\n')
-                #if f == 95334 or t == 95334:
-                #  log.joint(' f ' + str(f) + ' t ' + str(t) + '\n')
-                #  log.joint(' the status is ' + str(status) + '\n')
+                # if status == 0:
+                #   log.joint(' f ' + str(f) + ' t ' + str(t) + '\n')
+                #   log.joint(' the status is ' + str(status) + '\n')
 
                 if status:
-                  #branches[branchcount] = branch(log,branchcount, f, id_f, t, id_t, r, x, bc, rateA/baseMVA, rateB/baseMVA, rateC/baseMVA, ratio, angle, maxangle, minangle, status, 1e03, linenum-1)
-                  branches[branchcount] = branch(log,branchcount, f, id_f, t, id_t, r, x, bc, rateA/baseMVA, rateB/baseMVA, rateC/baseMVA, ratio, angle, maxangle, minangle, status, 2*sumPd/baseMVA, linenum-1)
+                  branches[branchcount] = branch(log,branchcount, f, id_f, t, id_t, r, x, 
+                                                 bc, rateA/baseMVA, rateB/baseMVA, 
+                                                 rateC/baseMVA, ratio, angle, maxangle, 
+                                                 minangle, status, 2*sumPd/baseMVA, 
+                                                 linenum-1)
                   zerolimit += (branches[branchcount].constrainedflow == 0)
                   activebranches += 1
         
 
                   buses[id_f].addfrombranch(log, branchcount)
-
                   buses[id_t].addtobranch(log, branchcount)
 
                 linenum += 1

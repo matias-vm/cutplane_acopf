@@ -6,7 +6,6 @@ import numpy as np
 import bisect
 from myutils import breakexit
 import reader
-import pglibreader
 import time
 import math
 from cuts import *
@@ -71,11 +70,15 @@ def gocutplane(log, all_data):
     ubound = maxprod
     lbound = minprod
 
-    Pubound, Plbound, Qubound, Qlbound = computebalbounds(log, all_data, bus)    
+    Pubound, Plbound, Qubound, Qlbound = computebalbounds(log, all_data, bus)  
           
-    cvar[bus]    = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "c_"+str(bus.nodeID)+"_"+str(bus.nodeID))
-    Pinjvar[bus] = themodel.addVar(obj = 0.0, lb = Plbound, ub = Pubound, name = "IP_"+str(bus.nodeID))
-    Qinjvar[bus] = themodel.addVar(obj = 0.0, lb = Qlbound, ub = Qubound, name = "IQ_"+str(bus.nodeID))
+    cvar[bus] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                name = "c_" + str(bus.nodeID) + "_" 
+                                + str(bus.nodeID))
+    Pinjvar[bus] = themodel.addVar(obj = 0.0, lb = Plbound, ub = Pubound, 
+                                   name = "IP_"+str(bus.nodeID))
+    Qinjvar[bus] = themodel.addVar(obj = 0.0, lb = Qlbound, ub = Qubound, 
+                                   name = "IQ_"+str(bus.nodeID))
     
     varcount += 3
 
@@ -85,8 +88,9 @@ def gocutplane(log, all_data):
       lower = gen.Pmin*gen.status
       upper = gen.Pmax*gen.status
 
-      GenPvar[gen] = themodel.addVar(obj = 0.0, lb = lower, ub = upper, name = "GP_"+str(gen.count)+"_"+str(gen.nodeID))
-
+      GenPvar[gen] = themodel.addVar(obj = 0.0, lb = lower, ub = upper, 
+                                     name = "GP_" + str(gen.count) + "_" 
+                                     + str(gen.nodeID))
       lower = gen.Qmin*gen.status
       upper = gen.Qmax*gen.status
 
@@ -94,14 +98,18 @@ def gocutplane(log, all_data):
         upper = GRB.INFINITY
         lower = -GRB.INFINITY
 
-      GenQvar[gen] = themodel.addVar(obj = 0.0, lb = lower, ub = upper, name = "GQ_"+str(gen.count)+"_"+str(gen.nodeID))
+      GenQvar[gen] = themodel.addVar(obj = 0.0, lb = lower, ub = upper, 
+                                     name = "GQ_" + str(gen.count) + "_" 
+                                     + str(gen.nodeID))
 
       varcount += 2
 
       #if model has quadratic objective and we linearize
       if gen.costdegree == 2 and gen.costvector[0] != 0 and (all_data['linear_objective'] or all_data['hybrid']):
-        GenTvar[gen] = themodel.addVar(obj = 0.0, lb = 0.0, ub = GRB.INFINITY, name = 't_g_' + str(gen.count) + '_' + str(gen.nodeID)) 
-        
+
+        GenTvar[gen] = themodel.addVar(obj = 0.0, lb = 0.0, ub = GRB.INFINITY,
+                                       name = 't_g_' + str(gen.count) + '_' 
+                                       + str(gen.nodeID))         
         varcount += 1
 
   for branch in branches.values():
@@ -112,7 +120,7 @@ def gocutplane(log, all_data):
       maxprod = buses[count_of_f].Vmax*buses[count_of_t].Vmax
       minprod = buses[count_of_f].Vmin*buses[count_of_t].Vmin
 
-      #c variables #check kit for bounds, might be tighter
+      #c variables 
       ubound =  maxprod
       lbound =  minprod*math.cos(branch.maxangle_rad)
 
@@ -124,7 +132,9 @@ def gocutplane(log, all_data):
         ubound = maxprod
         lbound = 0                                                                         
                                           
-      cvar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "c_"+str(branch.count)+"_"+str(f) + "_" + str(t))
+      cvar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "c_" + str(branch.count) + "_" 
+                                     + str(f) + "_" + str(t))
 
       #s variables
       if branch.maxangle_rad > 0:      
@@ -141,7 +151,9 @@ def gocutplane(log, all_data):
       if branch.loweranglenone == 1:
         lbound = -maxprod
                                   
-      svar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "s_"+str(branch.count)+"_"+str(f) + "_" + str(t))
+      svar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "s_" + str(branch.count) + "_" 
+                                     + str(f) + "_" + str(t))
     
       varcount +=2
       
@@ -151,13 +163,21 @@ def gocutplane(log, all_data):
       count_of_f = IDtoCountmap[f]
       count_of_t = IDtoCountmap[t]
 
-      ubound = branch.limit  #if constrainedflow check kit
+      ubound = branch.limit 
       lbound = -branch.limit
 
-      Pvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "P_"+str(branch.count)+"_"+str(f) + "_" + str(t))
-      Pvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "P_"+str(branch.count)+"_"+str(t) + "_" + str(f))
-      Qvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "Q_"+str(branch.count)+"_"+str(f) + "_" + str(t))
-      Qvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, name = "Q_"+str(branch.count)+"_"+str(t) + "_" + str(f))
+      Pvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                       name = "P_" + str(branch.count) + "_" 
+                                       + str(f) + "_" + str(t))
+      Pvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                       name = "P_" + str(branch.count) + "_" 
+                                       + str(t) + "_" + str(f))
+      Qvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                       name = "Q_" + str(branch.count) + "_" 
+                                       + str(f) + "_" + str(t))
+      Qvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                       name = "Q_" + str(branch.count) + "_" 
+                                       + str(t) + "_" + str(f))
 
       varcount +=4 
 
@@ -172,12 +192,19 @@ def gocutplane(log, all_data):
       t           = branch.t
       count_of_f  = IDtoCountmap[f]
       count_of_t  = IDtoCountmap[t]
+      bus_f       = buses[count_of_f]
+      #bus_t       = buses[count_of_t]
 
-      upperbound_f = branch.limit**2 / (buses[count_of_f].Vmin*buses[count_of_f].Vmin)
-      #upperbound_t = branch.limit / (buses[count_of_t].Vmin*buses[count_of_t].Vmin)
+      upperbound_f = branch.limit**2 / (bus_f.Vmin * bus_f.Vmin)
+      #upperbound_t = branch.limit**2 / (bus_t.Vmin * bus_t.Vmin)
 
-      i2var_f[branch] = themodel.addVar(obj = 0.0, lb = 0, ub = upperbound_f , name = "i2_"+str(branch.count)+"_"+str(f) + "_" + str(t) )
-      #i2var_t[branch] = themodel.addVar(obj = 0.0, lb = 0, ub = upperbound_t, name = "i2_"+str(branch.count)+"_"+str(t) + "_" + str(f) )
+      i2var_f[branch] = themodel.addVar(obj = 0.0, lb = 0, ub = upperbound_f ,
+                                        name = "i2_" + str(branch.count) + "_"
+                                        + str(f) + "_" + str(t))
+
+      #i2var_t[branch] = themodel.addVar(obj = 0.0, lb = 0, ub = upperbound_t,
+                                        #name = "i2_" + str(branch.count) + "_"
+                                        #+ str(t) + "_" + str(f))
     
       varcount += 1
       
@@ -507,10 +534,12 @@ def gocutplane(log, all_data):
   themodel.Params.Method    = all_data['solver_method']
   themodel.Params.Crossover = all_data['crossover'] 
   if all_data['solver_method'] == 2:
-    themodel.Params.BarHomogeneous = 1
-    themodel.Params.BarConvTol = 1e-06
+    #themodel.Params.BarHomogeneous = 1
+    themodel.Params.BarConvTol     = 1e-4
+    themodel.Params.FeasibilityTol = 1e-4
+    themodel.Params.OptimalityTol  = 1e-4
 
-  themodel.Params.NumericFocus = 1
+  #themodel.Params.NumericFocus = 1
   themodel.Params.OutPutFlag = 1
   
   #themodel.Params.Logfile = 'newlogs/' + all_data['casename'] + '_gurobi.log'
@@ -539,6 +568,15 @@ def gocutplane(log, all_data):
 
   while (all_data['round'] <= all_data['max_rounds']) and (all_data['runtime'] <= all_data['max_time']) and (all_data['ftol_counter'] <= all_data['ftol_iterates']):
     
+
+    #new tolerances
+    if (all_data['ftol_counter'] == 4) or (all_data['max_rounds'] == 1) or (
+        all_data['runtime'] > 150):
+      themodel.Params.BarHomogeneous = 1
+      themodel.Params.NumericFocus   = 1 #off and then on doesnt help
+      themodel.Params.BarConvTol     = 1e-6
+      themodel.Params.FeasibilityTol = 1e-6
+      themodel.Params.OptimalityTol  = 1e-6
 
     #hybrid algorithm
     if all_data['hybrid']:
@@ -842,7 +880,9 @@ def gocutplane(log, all_data):
       log.joint(' primal_bound = %g\n' % primal_bound)
       log.joint(' gap (percent) = %g\n' % gap)
     log.joint(' solver status = ' + str(themodel.status) + ' solver method = ' + str(themodel.params.method) + '\n')
-    log.joint(' threshold relative improvement obj = %g\n' % all_data['ftol']) 
+    log.joint(' BarConTol = ' + str(themodel.params.BarConvTol) 
+              + ' FeasTol = ' + str(themodel.params.FeasibilityTol) 
+              + ' OptTol = ' + str(themodel.params.OptimalityTol) + '\n') 
     log.joint(' -- active power --\n')
     log.joint(' total active power generation = %g\n' % all_data['total_active_gen'] )
     log.joint(' active power losses = %g\n' % all_data['total_active_losses'] )

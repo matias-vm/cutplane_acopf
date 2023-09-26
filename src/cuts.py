@@ -26,7 +26,7 @@ def compute_coeffs_cutnorm(cft,sft,cff,ctt):
 
     v = np.zeros(4,dtype = 'float')
     
-    cutnorm = math.sqrt( (2 * cft)**2 + (2 * sft)**2 + (cff - ctt)**2 )
+    cutnorm   = math.sqrt( (2 * cft)**2 + (2 * sft)**2 + (cff - ctt)**2 )
     coeff_cft = 4 * cft
     coeff_sft = 4 * sft
     coeff_cff = cff - ctt - cutnorm
@@ -126,11 +126,13 @@ def loss_cuts(log,all_data):
         Pf                   = Pfvalues[branch]
         Pt                   = Ptvalues[branch]
 
-        log.joint(' --> new loss inequality\n')
-        log.joint(' branch ' + str(branchcount) + ' f ' + str(f) + ' t ' + str(t) + ' violation ' + str(violation) + '\n')
-        log.joint(' values ' + ' Pf ' + str(Pf) + ' Pt ' + str(Pt) + '\n' )
+        if all_data['loud_cuts']:
+            log.joint(' --> new loss inequality\n')
+            log.joint(' branch ' + str(branchcount) + ' f ' + str(f) + ' t ' 
+                      + str(t) + ' violation ' + str(violation) + '\n')
+            log.joint(' values ' + ' Pf ' + str(Pf) + ' Pt ' + str(Pt) + '\n' )
 
-        #sanity check loss inequalities
+        #sanity check
         if all_data['loss_validity']:
             
             sol_Pf     = all_data['sol_Pfvalues'][branch]
@@ -187,7 +189,6 @@ def drop_loss(log,all_data):
         if (cut_age == 0):
             log.joint(' branch ' + str(branch.count) + 'skipped \n')
             continue #cut new born, skip                                                                                    
-
         branchcount = branch.count 
         f           = branch.f
         t           = branch.t
@@ -195,13 +196,14 @@ def drop_loss(log,all_data):
         constr      = themodel.getConstrByName(constrname)
         slack       = constr.getAttr("slack")
 
-        log.joint(' slack of the loss cut ' + str(branchcount) + "_" + str(f) + "_" + str(t) + ' = ' + str(slack) + '\n')
         if ( slack < - threshold ) and (cut_age > cut_age_limit):
-            log.joint(' -------\n')
-            log.joint(' slack loss cut ' + str(branchcount) + "_" + str(f) + "_" + str(t) + ' = ' + str(slack) + '\n')
             drop_loss.append(branch)
             themodel.remove(themodel.getConstrByName(constrname))
-            log.joint(' the loss cut was added to drop_loss list and removed from the model\n' )
+            if all_data['loud_cuts']:
+                log.joint(' --> removed loss-cut\n')
+                log.joint(' the cut ' + str(key)
+                          + ' was removed from the model\n')
+            
             
     num_drop_loss = len(drop_loss)
     
@@ -269,7 +271,11 @@ def i2_cuts(log,all_data):
         #violation_t = Ptvalues[branch]*Ptvalues[branch] + Qtvalues[branch]*Qtvalues[branch] - cvalues[buses[count_of_t]] * i2tvalues[branch]
         #violation = max(violation_f,violation_t)
         if violation > threshold:
-            #log.joint(' violation ' + str(violation) + ' at branch ' + str(branch.count) + ' f ' + str(f) + ' t ' + str(t) + ' i2 value ' + str(i2fvalues[branch]) + '\n')
+            if all_data['loud_cuts']:
+                log.joint(' violation ' + str(violation) + ' at branch ' 
+                          + str(branch.count) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' i2 value ' + str(i2fvalues[branch]) 
+                          + '\n')
             violated_count  += 1
             violated[branch] = violation
 
@@ -305,18 +311,25 @@ def i2_cuts(log,all_data):
         coeff_cff  = cff - i2ft - cutnorm
         coeff_i2ft = - (cff - i2ft) - cutnorm
 
-        if parallel_check_i2(log,all_data,branch,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft):
+        if parallel_check_i2(log,all_data,branch,coeff_Pft,coeff_Qft,
+                             coeff_cff,coeff_i2ft):
             continue
 
         most_violated_count += 1
         violation            = most_violated[branch]
         cutid                = num_cuts + most_violated_count
 
-        log.joint(' --> new i2-cut\n')
-        log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' + str(t) + ' violation ' + str(violation) + ' cut id ' + str((num_cuts + most_violated_count)) + '\n' )
-        log.joint(' values ' + ' Pft ' + str(Pft) + ' Qft ' + str(Qft) + ' cff ' + str(cff) + ' i2ft ' + str(i2ft) + '\n' )
-        log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' i2ft ' + str(coeff_i2ft) + '\n' )
-        log.joint(' cutnorm ' + str(cutnorm) + '\n')
+        if all_data['loud_cuts']:
+            log.joint(' --> new i2-cut\n')
+            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+                      + str(t) + ' violation ' + str(violation) + ' cut id ' 
+                      + str((num_cuts + most_violated_count)) + '\n' )
+            log.joint(' values ' + ' Pft ' + str(Pft) + ' Qft ' + str(Qft) 
+                      + ' cff ' + str(cff) + ' i2ft ' + str(i2ft) + '\n' )
+            log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' 
+                      + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' i2ft ' 
+                      + str(coeff_i2ft) + '\n' )
+            log.joint(' cutnorm ' + str(cutnorm) + '\n')
 
         #sanity check
         if all_data['i2_validity']:
@@ -402,10 +415,11 @@ def drop_i2(log,all_data):
 
         if ( slack < - cut_threshold ):
             drop_i2.append(key)
-            log.joint(' -------\n')
-            log.joint(' the cut ' + str(key) + ' was added to drop_i2 list\n' )
             themodel.remove(themodel.getConstrByName(constrname))
-            log.joint(' the cut ' + str(key) + ' was removed from the model\n' )
+            if all_data['loud_cuts']:
+                log.joint(' --> removed i2-cut\n')
+                log.joint(' the cut ' + str(key) 
+                          + ' was removed from the model\n')
     
     num_drop_i2       = len(drop_i2)
     
@@ -544,23 +558,30 @@ def limit_cuts(log,all_data):
         coeff_Q    = t0 * Qval
         z          = 1
         
-        if parallel_check_limit(log,all_data,branch,coeff_P,coeff_Q,from_or_to):
+        if parallel_check_limit(log,all_data,branch,coeff_P,coeff_Q,
+                                from_or_to):
             continue
 
         #we add the cut
         most_violated_count += 1
         cutid                = num_cuts + most_violated_count
 
-        log.joint(' --> new cut\n')
-        log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' + str(t) + ' violation ' + str(violation) + ' cut id ' + str((num_cuts + most_violated_count)) + '\n')
-        if from_or_to == 'f':
-            log.joint(' values ' + ' Pft ' + str(Pval) + ' Qft ' + str(Qval) + '\n')
-            log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) + ' Qft ' + str(coeff_Q) + ' RHS ' + str(z) + '\n')
-        elif from_or_to == 't':
-            log.joint(' values ' + ' Ptf ' + str(Pval) + ' Qtf ' + str(Qval) + '\n')
-            log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) + ' Qtf ' + str(coeff_Q) + ' RHS ' + str(z) + '\n')
+        if all_data['loud_cuts']:
+            log.joint(' --> new cut\n')
+            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+                      + str(t) + ' violation ' + str(violation) + ' cut id ' 
+                      + str(cutid) + '\n')
+            if from_or_to == 'f':
+                log.joint(' values ' + ' Pft ' + str(Pval) + ' Qft ' 
+                          + str(Qval) + '\n')
+                log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) + ' Qft ' 
+                          + str(coeff_Q) + ' RHS ' + str(z) + '\n')
+            elif from_or_to == 't':
+                log.joint(' values ' + ' Ptf ' + str(Pval) + ' Qtf ' 
+                          + str(Qval) + '\n')
+                log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) + ' Qtf ' 
+                          + str(coeff_Q) + ' RHS ' + str(z) + '\n')
         
-
         #sanity check
         if all_data['limit_validity']:
             
@@ -661,8 +682,10 @@ def drop_limit(log,all_data):
         if ( slack < - cut_threshold ):
             drop_limit.append(key)
             themodel.remove(themodel.getConstrByName(constrname))
-            log.joint(' -------\n')
-            log.joint(' the cut ' + str(key) + ' was added to drop_limit and removed from the model\n')
+            if all_data['loud_cuts']:
+                log.joint(' --> removed limit-cut\n')
+                log.joint(' the cut ' + str(key)
+                          + ' was removed from the model\n')
     
     num_drop_limit       = len(drop_limit)
     if num_drop_limit:
@@ -760,7 +783,8 @@ def jabr_cuts(log,all_data):
         coeff_cff = cff - ctt - cutnorm
         coeff_ctt = - (cff - ctt) - cutnorm
 
-        if parallel_check(log,all_data,branch,coeff_cft,coeff_sft,coeff_cff,coeff_ctt):
+        if parallel_check(log,all_data,branch,coeff_cft,coeff_sft,coeff_cff,
+                          coeff_ctt):
             continue
 
         #we add the cut
@@ -768,11 +792,17 @@ def jabr_cuts(log,all_data):
         violation            = most_violated[branch]
         cutid                = num_cuts + most_violated_count
 
-        log.joint(' --> new cut\n')
-        log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' + str(t) + ' violation ' + str(violation) + ' cut id ' + str((num_cuts + most_violated_count)) + '\n' )
-        log.joint(' values ' + ' cft ' + str(cft) + ' sft ' + str(sft) + ' cff ' + str(cff) + ' ctt ' + str(ctt) + '\n' )
-        log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' + str(coeff_sft) + ' cff ' + str(coeff_cff) + ' ctt ' + str(coeff_ctt) + '\n' )
-        log.joint(' cutnorm ' + str(cutnorm) + '\n')
+        if all_data['loud_cuts']:
+            log.joint(' --> new cut\n')
+            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+                      + str(t) + ' violation ' + str(violation) + ' cut id ' 
+                      + str(cutid) + '\n' )
+            log.joint(' values ' + ' cft ' + str(cft) + ' sft ' + str(sft) 
+                      + ' cff ' + str(cff) + ' ctt ' + str(ctt) + '\n' )
+            log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' 
+                      + str(coeff_sft) + ' cff ' + str(coeff_cff) + ' ctt ' 
+                      + str(coeff_ctt) + '\n' )
+            log.joint(' cutnorm ' + str(cutnorm) + '\n')
 
         #sanity check
         if all_data['jabr_validity']:
@@ -781,7 +811,7 @@ def jabr_cuts(log,all_data):
             sol_s     = all_data['sol_svalues'][branch]
             sol_cbusf = all_data['sol_cvalues'][buses[count_of_f]]
             sol_cbust = all_data['sol_cvalues'][buses[count_of_t]]
-            slack    = coeff_cft * sol_c + coeff_sft * sol_s + coeff_cff * sol_cbusf + coeff_ctt * sol_cbust
+            slack     = coeff_cft * sol_c + coeff_sft * sol_s + coeff_cff * sol_cbusf + coeff_ctt * sol_cbust
 
             if slack > FeasibilityTol:
                 log.joint(' this cut is not valid!\n')
@@ -852,8 +882,10 @@ def drop_jabr(log,all_data):
         if ( slack < - cut_threshold ):
             drop_jabrs.append(key)
             themodel.remove(themodel.getConstrByName(constrname))
-            log.joint(' -------\n')
-            log.joint(' the cut ' + str(key) + ' was added to drop_jabrs and removed from the model\n')
+            if all_data['loud_cuts']:
+                log.joint(' --> removed Jabr-cut\n')
+                log.joint(' the cut ' + str(key)
+                          + ' was removed from the model\n')
     
     num_drop_jabrs = len(drop_jabrs)
 
@@ -890,7 +922,7 @@ def add_cuts(log,all_data):
     else:
         original_casename = all_data['casename']
 
-    filename = 'cuts/cuts_' + original_casename + '.txt' 
+    filename = 'newcuts/cuts_' + original_casename + '.txt' ###cuts | newcuts
     log.joint(" opening file with cuts " + filename + "\n")
 
 
@@ -997,9 +1029,13 @@ def add_cuts(log,all_data):
                 log.joint(' branchid ' + str(branchid) + ' branch.count ' + str(branch.count) + ' f ' + str(f) + ' branch.f ' + str(branch.f) + ' t ' + str(t) + ' branch.t ' + str(branch.t) + '\n')
                 breakexit('bug')
 
-            #log.joint(' --> new Jabr-envelope cut\n')
-            #log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + ' cutid ' + str(cutid) + '\n' )
-            #log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' + str(coeff_sft) + ' cff ' + str(coeff_cff) + ' ctt ' + str(coeff_ctt) + '\n' )
+            if all_data['loud_cuts']:
+                log.joint(' --> new Jabr-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid) + '\n' )
+                log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' 
+                          + str(coeff_sft) + ' cff ' + str(coeff_cff) 
+                          + ' ctt ' + str(coeff_ctt) + '\n' )
                             
             if all_data['jabr_validity']:
                 sol_c           = all_data['sol_cvalues'][branch]
@@ -1049,9 +1085,13 @@ def add_cuts(log,all_data):
             if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
                 breakexit('there might be bug')
 
-            #log.joint(' --> new i2-envelope cut\n')
-            #log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + ' cutid ' + str(cutid) + '\n' )
-            #log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' i2ft ' + str(coeff_i2ft) + '\n' )
+            if all_data['loud_cuts']:
+                log.joint(' --> new i2-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid) + '\n' )
+                log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' 
+                          + str(coeff_Qft) + ' cff ' + str(coeff_cff) 
+                          + ' i2ft ' + str(coeff_i2ft) + '\n' )
             
             if all_data['i2_validity']:
                 sol_Pf           = all_data['sol_Pfvalues'][branch]
@@ -1110,12 +1150,16 @@ def add_cuts(log,all_data):
             if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
                 breakexit('there might be bug')
 
-            #log.joint(' --> new limit-envelope cut\n')
-            #log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + ' cutid ' + str(cutid) + '\n' )
-            # if from_or_to == 'f':
-            #     log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) + ' Qft ' + str(coeff_Q) + '\n')
-            # elif from_or_to == 't':
-            #     log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) + ' Qtf ' + str(coeff_Q) + '\n')
+            if all_data['loud_cuts']:
+                log.joint(' --> new limit-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid) + '\n' )
+                if from_or_to == 'f':
+                    log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) 
+                              + ' Qft ' + str(coeff_Q) + '\n')
+                elif from_or_to == 't':
+                    log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) 
+                              + ' Qtf ' + str(coeff_Q) + '\n')
             
             
             if all_data['limit_validity']:
@@ -1157,7 +1201,7 @@ def add_cuts(log,all_data):
 
 def write_cuts(log,all_data):
     
-    filename = 'cuts/cuts_' + all_data['casename'] + '.txt' #change to newcuts when running bash script
+    filename = 'newcuts/cuts_' + all_data['casename'] + '.txt' #change to newcuts when running bash script
     log.joint(" opening file with cuts " + filename + "\n")
 
     try:
@@ -1250,15 +1294,21 @@ def parallel_check(log,all_data,branch,coeff_cft,coeff_sft,coeff_cff,coeff_ctt):
     threshold         = all_data['threshold']
     threshold_dotprod = all_data['threshold_dotprod']    
     jabr_cuts_info    = all_data['jabr_cuts_info_updated']
-    cuts_branch       = jabr_cuts_info[branch] #(rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)
+    cuts_branch       = jabr_cuts_info[branch] 
   
-    log.joint('\n -- parallel check wrt previous Jabr-envelope cuts at branch ' + str(branch.count) +'\n')
+    if all_data['loud_cuts']:
+        log.joint('\n -- parallel check wrt previous Jabr-envelope cuts at branch ' + str(branch.count) +'\n')
+
     if len(cuts_branch) == 0:
-        log.joint(' first Jabr-envelope cut, we add it\n')
+        if all_data['loud_cuts']:
+            log.joint(' first Jabr-envelope cut, we add it\n')
         return 0 
     else:
         v = compute_normal(coeff_cft,coeff_sft,coeff_cff,coeff_ctt)
-        log.joint(' LHS coeffs potential cut ' + ' cft ' + str(coeff_cft) + ' sft ' + str(coeff_sft) + ' cff ' + str(coeff_cff) + ' ctt ' + str(coeff_ctt) + '\n' )
+        if all_data['loud_cuts']:
+            log.joint(' LHS coeffs potential cut ' + ' cft ' + str(coeff_cft) 
+                      + ' sft ' + str(coeff_sft) + ' cff ' + str(coeff_cff) 
+                      + ' ctt ' + str(coeff_ctt) + '\n' )
 
         for cut in cuts_branch.values():
             cutid         = cut[7]
@@ -1266,18 +1316,27 @@ def parallel_check(log,all_data,branch,coeff_cft,coeff_sft,coeff_cff,coeff_ctt):
             cut_coeff_sft = cut[3]
             cut_coeff_cff = cut[4]
             cut_coeff_ctt = cut[5]
-            w = compute_normal(cut_coeff_cft,cut_coeff_sft,cut_coeff_cff,cut_coeff_ctt)
-
-            log.joint(' LHS coeffs of cutid ' + str(cutid) + ' cft ' + str(cut_coeff_cft) + ' sft ' + str(cut_coeff_sft) + ' cff ' + str(cut_coeff_cff) + ' ctt ' + str(cut_coeff_ctt) + '\n' )
+            w = compute_normal(cut_coeff_cft,cut_coeff_sft,cut_coeff_cff,
+                               cut_coeff_ctt)
             dotprod = np.dot(v,w)
             angle = np.arccos(dotprod)
             angle_deg = angle * 180 / np.pi
-            log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' + str(angle_deg) +  ' dot-product ' + str(dotprod) + '\n')
+            if all_data['loud_cuts']:
+                log.joint(' LHS coeffs of cutid ' + str(cutid) + ' cft ' 
+                          + str(cut_coeff_cft) + ' sft ' + str(cut_coeff_sft) 
+                          + ' cff ' + str(cut_coeff_cff) + ' ctt ' 
+                          + str(cut_coeff_ctt) + '\n' )
+                log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' 
+                          + str(angle_deg) +  ' dot-product ' + str(dotprod) 
+                          + '\n')
+            
             if dotprod > 1 - threshold_dotprod:
-                log.joint(' parallel cut, should not be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' parallel cut, should not be added\n')
                 return 1
             else:
-                log.joint(' cut should be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' cut should be added\n')
                 return 0
         
      
@@ -1285,35 +1344,49 @@ def parallel_check_i2(log,all_data,branch,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2
 
     threshold         = all_data['threshold']
     threshold_dotprod = all_data['threshold_dotprod']    
-    i2_cuts_info      = all_data['i2_cuts_info_updated']      #we had a BUG, jabr_cuts_info, also change to updated ...
-    cuts_branch       = i2_cuts_info[branch]          #(rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)    
+    i2_cuts_info      = all_data['i2_cuts_info_updated']      
+    cuts_branch       = i2_cuts_info[branch]          
 
-    log.joint('\n -- parallel check wrt previous i2-envelope cuts at branch ' + str(branch.count) +'\n')
+    if all_data['loud_cuts']:
+        log.joint('\n -- parallel check wrt previous i2-envelope cuts at branch ' + str(branch.count) +'\n')
+
     if len(cuts_branch) == 0:
-        log.joint(' first i2-envelope cut, we add it\n')
+        if all_data['loud_cuts']:
+            log.joint(' first i2-envelope cut, we add it\n')
         return 0 
     else:
         v = compute_normal(coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft)
-        log.joint(' LHS coeffs potential cut ' + ' Pft ' + str(coeff_Pft) + ' Qft ' + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' i2ft ' + str(coeff_i2ft) + '\n' )
+        if all_data['loud_cuts']:
+            log.joint(' LHS coeffs potential cut ' + ' Pft ' + str(coeff_Pft) 
+                      + ' Qft ' + str(coeff_Qft) + ' cff ' + str(coeff_cff) 
+                      + ' i2ft ' + str(coeff_i2ft) + '\n' )
 
         for cut in cuts_branch.values():
             cutid      = cut[7]
-            coeff_Pft  = cut[2]
-            coeff_Qft  = cut[3]
-            coeff_cff  = cut[4]
-            coeff_i2ft = cut[5]
-            w = compute_normal(coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft)
-
-            log.joint(' LHS coeffs of cutid ' + str(cutid) + ' cft ' + str(coeff_Pft) + ' sft ' + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' ctt ' + str(coeff_i2ft) + '\n' )
+            cut_coeff_Pft  = cut[2]
+            cut_coeff_Qft  = cut[3]
+            cut_coeff_cff  = cut[4]
+            cut_coeff_i2ft = cut[5]
+            w = compute_normal(cut_coeff_Pft,cut_coeff_Qft,cut_coeff_cff,
+                               coeff_i2ft)
             dotprod = np.dot(v,w)
             angle = np.arccos(dotprod)
             angle_deg = angle * 180 / np.pi
-            log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' + str(angle_deg) +  ' dot-product ' + str(dotprod) + '\n')
+            if all_data['loud_cuts']:
+                log.joint(' LHS coeffs of cutid ' + str(cutid) + ' cft ' 
+                          + str(cut_coeff_Pft) + ' sft ' + str(cut_coeff_Qft) 
+                          + ' cff ' + str(cut_coeff_cff) + ' ctt ' 
+                          + str(cut_coeff_i2ft) + '\n' )
+                log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' 
+                          + str(angle_deg) +  ' dot-product ' + str(dotprod) 
+                          + '\n')
             if dotprod > 1 - threshold_dotprod:
-                log.joint(' parallel cut, should not be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' parallel cut, should not be added\n')
                 return 1
             else:
-                log.joint(' cut should be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' cut should be added\n')
                 return 0
 
 
@@ -1324,18 +1397,24 @@ def parallel_check_limit(log,all_data,branch,coeff_P,coeff_Q,from_or_to):
     limit_cuts_info   = all_data['limit_cuts_info_updated']
     cuts_branch       = limit_cuts_info[branch]          
 
-    log.joint('\n -- parallel check wrt previous limit-envelope cuts at branch ' + str(branch.count) +'\n')
+    if all_data['loud_cuts']:
+        log.joint('\n -- parallel check wrt previous limit-envelope cuts at branch ' + str(branch.count) +'\n')
+
     if len(cuts_branch) == 0:
-        log.joint(' first limit-envelope cut, we add it\n')
+        if all_data['loud_cuts']:
+            log.joint(' first limit-envelope cut, we add it\n')
         return 0 
     else:        
         v = compute_normal(coeff_P,coeff_Q)
-        if from_or_to == 'f':
-            log.joint(' LHS coeffs potential cut ' + ' Pft ' + str(coeff_P) + ' Qft ' + str(coeff_Q) + '\n')
-        elif from_or_to == 't':
-            log.joint(' LHS coeffs potential cut ' + ' Ptf ' + str(coeff_P) + ' Qtf ' + str(coeff_Q) + '\n' )
+        if all_data['loud_cuts']:
+            if from_or_to == 'f':
+                log.joint(' LHS coeffs potential cut ' + ' Pft ' 
+                          + str(coeff_P) + ' Qft ' + str(coeff_Q) + '\n')
+            elif from_or_to == 't':
+                log.joint(' LHS coeffs potential cut ' + ' Ptf ' 
+                          + str(coeff_P) + ' Qtf ' + str(coeff_Q) + '\n' )
 
-        for cut in cuts_branch.values(): #(rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
+        for cut in cuts_branch.values(): 
             cutid          = cut[5]
             cut_coeff_P    = cut[2]
             cut_coeff_Q    = cut[3]
@@ -1344,24 +1423,31 @@ def parallel_check_limit(log,all_data,branch,coeff_P,coeff_Q,from_or_to):
             if from_or_to != cut_from_or_to: #we check whether potential cut has the same sense (from/to) as the incumbent cut
                 continue
 
-            w = compute_normal(cut_coeff_P,cut_coeff_Q)
-
-            if cut_from_or_to == 'f':
-                log.joint(' LHS coeffs of cutid ' + str(cutid) + ' Pft ' + str(cut_coeff_P) + ' Qft ' + str(cut_coeff_Q) + '\n')
-            elif cut_from_or_to == 't':
-                log.joint(' LHS coeffs of cutid ' + str(cutid) + ' Ptf ' + str(cut_coeff_P) + ' Qtf ' + str(cut_coeff_Q) + '\n')
-
+            w         = compute_normal(cut_coeff_P,cut_coeff_Q)
             dotprod   = np.dot(v,w)
             angle     = np.arccos(dotprod)
             angle_deg = angle * 180 / np.pi
-
-            log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' + str(angle_deg) +  ' dot-product ' + str(dotprod) + '\n')
+            
+            if all_data['loud_cuts']:
+                if cut_from_or_to == 'f':
+                    log.joint(' LHS coeffs of cutid ' + str(cutid) + ' Pft ' 
+                              + str(cut_coeff_P) + ' Qft ' + str(cut_coeff_Q) 
+                              + '\n')
+                elif cut_from_or_to == 't':
+                    log.joint(' LHS coeffs of cutid ' + str(cutid) + ' Ptf ' 
+                              + str(cut_coeff_P) + ' Qtf ' + str(cut_coeff_Q) 
+                              + '\n')
+                log.joint(' angle (rad) ' + str(angle) + ' angle (deg) ' 
+                          + str(angle_deg) +  ' dot-product ' + str(dotprod) 
+                          + '\n')
 
             if dotprod > 1 - threshold_dotprod:
-                log.joint(' parallel cut, should not be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' parallel cut, should not be added\n')
                 return 1
             else:
-                log.joint(' cut should be added\n')
+                if all_data['loud_cuts']:
+                    log.joint(' cut should be added\n')
                 return 0
             
         
@@ -1404,17 +1490,29 @@ def objective_cuts(log,all_data):
                     current_const = - a * current_sol * current_sol
                     current_slope = 2 * a * current_sol + b
                     linexpr_gen += current_const + current_slope * GenPvar[gen]
-                    log.joint(' ----\n')
                     
-                    
-                    log.joint(' violated objective-cut at gen id ' + str(gen.count) + ' violation ' + str(violation) + ' threshold ' + str(threshold) +  '\n')
-                    log.joint(' LHS coeff violated cut: constant ' + str(const) + ' slope ' + str(slope) + ' RHS ' + str(approxRHS) + '\n')
-                    log.joint(' GenPvalues: old Pgen ' + str(x0) + ' new Pgen ' + str(current_sol) + '\n')
-                    log.joint(' LHS coeff new cut: constant ' + str(current_const) + ' slope ' + str(current_slope) + ' RHS ' + str(trueRHS) + '\n')
+                    if all_data['loud_cuts']:
+                        log.joint(' ----\n')
+                        log.joint(' violated objective-cut at gen id ' 
+                                  + str(gen.count) + ' violation ' 
+                                  + str(violation) + ' threshold ' 
+                                  + str(threshold) +  '\n')
+                        log.joint(' LHS coeff violated cut: constant ' 
+                                  + str(const) + ' slope ' + str(slope) 
+                                  + ' RHS ' + str(approxRHS) + '\n')
+                        log.joint(' GenPvalues: old Pgen ' + str(x0) 
+                                  + ' new Pgen ' + str(current_sol) + '\n')
+                        log.joint(' LHS coeff new cut: constant ' 
+                                  + str(current_const) + ' slope ' 
+                                  + str(current_slope) + ' RHS ' 
+                                  + str(trueRHS) + '\n')
 
                     themodel.addConstr(linexpr_gen <= GenTvar[gen], name = 'qcost_gen_cut_' + str(rnd) + '_' + str(gen.count) + '_' + str(gen.nodeID) )
                     num_objective_cuts += 1
-                    log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
+                    
+                    if all_data['loud_cuts']:
+                        log.joint(' the objective-cut associated to gen id ' 
+                                  + str(gen.count) + ' was added \n' )
             
     else:
         for gen in gens.values():
@@ -1442,15 +1540,27 @@ def objective_cuts(log,all_data):
                         current_const = - a * current_sol * current_sol
                         current_slope = 2 * a * current_sol + b                    
                         linexpr_gen += current_const + current_slope * GenPvar[gen]
-                        log.joint(' ----\n')
-                        log.joint(' violated objective-cut at gen id ' + str(gen.count) + ' violation ' + str(violation) + ' threshold ' + str(threshold) +  '\n')
-                        log.joint(' LHS coeff violated cut: constant ' + str(const) + ' slope ' + str(slope) + ' RHS ' + str(approxRHS) + '\n')
-                        log.joint(' GenPvalues: old Pgen ' + str(x0) + ' new Pgen ' + str(current_sol) + '\n')
-                        log.joint(' LHS coeff new cut: constant ' + str(current_const) + ' slope ' + str(current_slope) + ' RHS ' + str(trueRHS) + '\n')
+                        if all_data['loud_cuts']:    
+                            log.joint(' ----\n')
+                            log.joint(' violated objective-cut at gen id ' 
+                                      + str(gen.count) + ' violation ' 
+                                      + str(violation) + ' threshold ' 
+                                      + str(threshold) +  '\n')
+                            log.joint(' LHS coeff violated cut: constant ' 
+                                      + str(const) + ' slope ' + str(slope) 
+                                      + ' RHS ' + str(approxRHS) + '\n')
+                            log.joint(' GenPvalues: old Pgen ' + str(x0) 
+                                      + ' new Pgen ' + str(current_sol) + '\n')
+                            log.joint(' LHS coeff new cut: constant ' 
+                                      + str(current_const) + ' slope ' 
+                                      + str(current_slope) + ' RHS ' 
+                                      + str(trueRHS) + '\n')
 
                         themodel.addConstr(linexpr_gen <= GenTvar[gen], name = 'qcost_gen_cut_' + str(rnd) + '_' + str(gen.count) + '_' + str(gen.nodeID) )
                         num_objective_cuts += 1
-                        log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
+                        
+                        if all_data['loud_cuts']:
+                            log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
                     
                 else:
                     index_left = index_sol - 1
@@ -1473,15 +1583,28 @@ def objective_cuts(log,all_data):
                             current_const = - a * current_sol * current_sol
                             current_slope = 2 * a * current_sol + b                    
                             linexpr_gen += current_const + current_slope * GenPvar[gen]
-                            log.joint(' -----\n')
-                            log.joint(' violated objective-cut at gen id ' + str(gen.count) + ' violation ' + str(violation_left) + ' threshold ' + str(threshold) +  '\n')
-                            log.joint(' LHS coeff violated cut: constant ' + str(const_left) + ' slope ' + str(slope_left) + ' RHS ' + str(approxRHS_left) + '\n')
-                            log.joint(' GenPvalues: old Pgen ' + str(x0_left) + ' new Pgen ' + str(current_sol) + '\n')
-                            log.joint(' LHS coeff new cut: constant ' + str(current_const) + ' slope ' + str(current_slope) + ' RHS ' + str(trueRHS) + '\n')
+                            if all_data['loud_cuts']:
+                                log.joint(' -----\n')
+                                log.joint(' violated objective-cut at gen id '
+                                          + str(gen.count) + ' violation ' 
+                                          + str(violation_left) + ' threshold '
+                                          + str(threshold) +  '\n')
+                                log.joint(' LHS coeff violated cut: constant ' 
+                                          + str(const_left) + ' slope ' 
+                                          + str(slope_left) + ' RHS ' 
+                                          + str(approxRHS_left) + '\n')
+                                log.joint(' GenPvalues: old Pgen ' 
+                                          + str(x0_left) + ' new Pgen ' 
+                                          + str(current_sol) + '\n')
+                                log.joint(' LHS coeff new cut: constant ' 
+                                          + str(current_const) + ' slope ' 
+                                          + str(current_slope) + ' RHS ' 
+                                          + str(trueRHS) + '\n')
 
                             themodel.addConstr(linexpr_gen <= GenTvar[gen], name = 'qcost_gen_cut_' + str(rnd) + '_' + str(gen.count) + '_' + str(gen.nodeID) )
                             num_objective_cuts += 1
-                            log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
+                            if all_data['loud_cuts']:
+                                log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
                     
                     else:
                         if violation_right > threshold:
@@ -1489,19 +1612,32 @@ def objective_cuts(log,all_data):
                             current_const = - a * current_sol * current_sol
                             current_slope = 2 * a * current_sol + b                    
                             linexpr_gen += current_const + current_slope * GenPvar[gen]
-                            log.joint(' ----\n')
-                            log.joint(' violated objective-cut at gen id ' + str(gen.count) + ' violation ' + str(violation_right) + ' threshold ' + str(threshold) +  '\n')
-                            log.joint(' LHS coeff violated cut: constant ' + str(const_right) + ' slope ' + str(slope_right) + ' RHS ' + str(approxRHS_right) + '\n')
-                            log.joint(' GenPvalues: old Pgen ' + str(x0_right) + ' new Pgen ' + str(current_sol) + '\n')
-                            log.joint(' LHS coeff new cut: constant ' + str(current_const) + ' slope ' + str(current_slope) + ' RHS ' + str(trueRHS) + '\n')
+                            if all_data['loud_cuts']:
+                                log.joint(' ----\n')
+                                log.joint(' violated objective-cut at gen id ' 
+                                          + str(gen.count) + ' violation ' 
+                                          + str(violation_right) 
+                                          + ' threshold ' + str(threshold) 
+                                          + '\n')
+                                log.joint(' LHS coeff violated cut: constant ' 
+                                          + str(const_right) + ' slope ' 
+                                          + str(slope_right) + ' RHS ' 
+                                          + str(approxRHS_right) + '\n')
+                                log.joint(' GenPvalues: old Pgen ' 
+                                          + str(x0_right) + ' new Pgen ' 
+                                          + str(current_sol) + '\n')
+                                log.joint(' LHS coeff new cut: constant ' 
+                                          + str(current_const) + ' slope ' 
+                                          + str(current_slope) + ' RHS ' 
+                                          + str(trueRHS) + '\n')
                             
-
                             themodel.addConstr(linexpr_gen <= GenTvar[gen], name = 'qcost_gen_cut_' + str(rnd) + '_' + str(gen.count) + '_' + str(gen.nodeID) )
                             num_objective_cuts += 1
-                            log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
+                            
+                            if all_data['loud_cuts']:
+                                log.joint(' the objective-cut associated to gen id ' + str(gen.count) + ' was added \n' )
 
             
-
     all_data['num_objective_cuts'] = num_objective_cuts
 
     
@@ -1625,14 +1761,7 @@ def computei2value(log,all_data,branch,sol_c,sol_s,sol_cbusf,sol_cbust):
     i2f += g*bshunt/(ratio**3) * ( sol_s * math.cos(angle) - sol_c * math.sin(angle) )
     i2f += (bshunt*bshunt*sol_cbusf/(4*(ratio**4)) )
 
-    # if (ratio != 1 and ratio != 0):
-    #     angle = branch.angle_rad
-    #     #first f                                                                                                                                                                           
-    #     i2f += (g*g + b*b)/(ratio*ratio) * ( (mp_cbusf/(ratio*ratio)) + mp_cbust - (2/ratio) * ( mp_c * math.cos(angle) + mp_s * math.sin(angle) ) )
-    #     i2f += b*bshunt/(ratio**3) * ( (mp_cbusf/ratio) - (mp_c * math.cos(angle) + mp_s * math.sin(angle) )) 
-    #     i2f += g*bshunt/(ratio**3) * ( mp_s * math.cos(angle) - mp_c * math.sin(angle) )
-    #     i2f += (bshunt*bshunt*mp_cbusf/(4*(ratio**4)) )
-    #     #now t                                                                                                                                                                                          
+    #now t
     #     #expr_t += (g*g + b*b) * ( cvar[buses[count_of_t]] + cvar[buses[count_of_f]]/(ratio*ratio) - (2/ratio) * ( cvar[branch] * math.cos(angle) + svar[branch] * math.sin(angle) ) )
     #     #expr_t += b*bshunt * ( cvar[buses[count_of_t]] - (1/ratio) * (cvar[branch] * math.cos(angle) + svar[branch] * math.sin(angle) ))
     #     #expr_t += (g*bshunt/ratio) * ( svar[branch] * math.cos(angle) - cvar[branch] * math.sin(angle) )

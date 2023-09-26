@@ -5,9 +5,6 @@ import os
 import numpy as np
 import time
 import reader
-#import newreader
-import pglibreader
-#import reader_pertline
 from myutils import breakexit
 from versioner import *
 from log import danoLogger
@@ -34,7 +31,9 @@ def read_config(log, filename):
     jabrcuts                     = 0
     i2cuts                       = 0
     losscuts                     = 0
+    limitcuts                    = 0
     objective_cuts               = 0    
+    loud_cuts                    = 0
 
 
     jabr_inequalities            = 0
@@ -76,7 +75,7 @@ def read_config(log, filename):
 
     jabr_validity                = 0
     i2_validity                  = 0
-    loss_validity               = 0
+    loss_validity                = 0
     limit_validity               = 0
 
     getsol                       = 0
@@ -100,13 +99,15 @@ def read_config(log, filename):
     droplimit                    = 0
     most_violated_fraction_limit = 1
     threshold_limit              = 1e-5
-    limit_cuts                   = 0
+
 
     writelps                     = 0
 
     ftol                         = 1e-3
     ftol_iterates                = 5
     max_time                     = 200
+
+
     
 
     while linenum < len(lines):
@@ -221,8 +222,8 @@ def read_config(log, filename):
             elif thisline[0] == 'i2_validity':
                 i2_validity = 1
 
-            elif thisline[0] == 'ploss_validity':
-                ploss_validity = 1
+            elif thisline[0] == 'loss_validity':
+                loss_validity = 1
 
             elif thisline[0] == 'fixflows':
                 fixflows = 1
@@ -293,6 +294,9 @@ def read_config(log, filename):
             elif thisline[0] == 'losscuts':
                 losscuts      = 1
 
+            elif thisline[0] == 'loud_cuts':
+                loud_cuts     = 1
+
             elif thisline[0] == 'END':
                 break
                 
@@ -361,10 +365,9 @@ def read_config(log, filename):
         all_data['dropjabrs']              = dropjabrs
         all_data['jabr_cuts_info']         = {}
         all_data['jabr_cuts_info_updated'] = {}
-        all_data['jabr_validity']          = jabr_validity
         all_data['max_error']              = 0
 
-
+    all_data['jabr_validity']          = jabr_validity
 
     all_data['limitcuts'] = limitcuts
     if limitcuts:
@@ -380,9 +383,10 @@ def read_config(log, filename):
         all_data['limit_cuts_info_updated']         = {}
         all_data['threshold_limit']                 = threshold_limit
         all_data['dropped_limit']                   = []
-        all_data['limit_validity']                  = limit_validity
+    
         all_data['max_error_limit']                 = 0
-        
+    
+    all_data['limit_validity']                  = limit_validity    
 
     all_data['i2cuts'] = i2cuts
     if i2cuts:
@@ -399,8 +403,10 @@ def read_config(log, filename):
         all_data['threshold_i2']              = threshold_i2
         all_data['dropped_i2']                = []
         all_data['i2_def_threshold']          = i2_def_threshold
-        all_data['i2_validity']               = i2_validity
+
         all_data['max_error_i2']              = 0
+
+    all_data['i2_validity']               = i2_validity
         
     all_data['primal_bound']                  = primal_bound
     all_data['crossover']                     = crossover
@@ -443,8 +449,10 @@ def read_config(log, filename):
         all_data['num_loss_cuts_dropped']       = 0
         all_data['dropped_loss']                = []
         all_data['most_violated_fraction_loss'] = most_violated_fraction_loss
-        all_data['loss_validity']               = loss_validity
+
         all_data['max_error_loss']              = 0
+
+    all_data['loss_validity']               = loss_validity
 
 
     all_data['writecuts']                     = writecuts
@@ -454,6 +462,7 @@ def read_config(log, filename):
     all_data['ftol']                          = ftol
     all_data['ftol_iterates']                 = ftol_iterates
 
+    all_data['loud_cuts']                     = loud_cuts
 
 
     return all_data
