@@ -536,12 +536,12 @@ def gocutplane(log, all_data):
   themodel.Params.Method    = all_data['solver_method']
   themodel.Params.Crossover = all_data['crossover'] 
   if all_data['solver_method'] == 2:
-    #themodel.Params.BarHomogeneous = 1
-    themodel.Params.BarConvTol     = 1e-4
-    themodel.Params.FeasibilityTol = 1e-4
-    themodel.Params.OptimalityTol  = 1e-4
+    themodel.Params.BarHomogeneous = 1
+    themodel.Params.BarConvTol     = 1e-6
+    #themodel.Params.FeasibilityTol = 1e-4
+    #themodel.Params.OptimalityTol  = 1e-4
 
-  #themodel.Params.NumericFocus = 1
+  themodel.Params.NumericFocus = 1
   themodel.Params.OutPutFlag = 1
   
   #themodel.Params.Logfile = 'newlogs/' + all_data['casename'] + '_gurobi.log'
@@ -583,6 +583,11 @@ def gocutplane(log, all_data):
     #hybrid algorithm
     if all_data['hybrid']:
       hybrid(log,all_data)
+
+
+    #####
+    #themodel.write('case3.lp')
+    #breakexit('case3.lp')
   
     ################## SOLVING MODEL ##################
 
@@ -636,6 +641,7 @@ def gocutplane(log, all_data):
       return themodel.status, 0
 
     elif themodel.status != GRB.status.OPTIMAL:
+    
       log.joint('->solver terminated with status ' + str(themodel.status) + '\n')
 
       all_data['runtime'] = time.time() - all_data['T0']
@@ -647,10 +653,10 @@ def gocutplane(log, all_data):
 
       summary_ws.close()
 
-      log.joint(' solver runtime = %g\n' % (t1_solve - t0_solve) )
-      log.joint(' overall time = %g\n' % all_data['runtime'] )
-      log.joint('bye.\n')
-      exit(0)
+      #log.joint(' solver runtime = %g\n' % (t1_solve - t0_solve) )
+      #log.joint(' overall time = %g\n' % all_data['runtime'] )
+      #log.joint('bye.\n')
+      #exit(0)
 
     all_data['cumulative_solver_time'] += (t1_solve - t0_solve)  
 
@@ -781,7 +787,11 @@ def gocutplane(log, all_data):
 
     ################## CUTS ##################
     
+    t0_cuts = time.time()
+
     log.joint(' adding cuts...\n')
+
+    t0_jabr = time.time()
 
     if all_data['jabrcuts']:
       jabr_cuts(log,all_data)
@@ -800,6 +810,10 @@ def gocutplane(log, all_data):
         #     log.joint(' bye.\n')
         #     return None
 
+    t1_jabr = time.time()
+
+    log.joint(' time spent on Jabrs ' + str(t1_jabr - t0_jabr) + '\n')
+    #breakexit(' jabrs ')
 
     if all_data['i2cuts']:
       i2_cuts(log,all_data)
@@ -817,7 +831,9 @@ def gocutplane(log, all_data):
         #     log.joint(' total runtime = ' + str(time.time() - all_data['T0']) )
         #     log.joint(' bye.\n')
         #     return None
-
+      
+      if all_data['NO_i2_cuts_violated']:
+        sys.exit(0)
 
     if all_data['limitcuts']:
       limit_cuts(log,all_data)
@@ -845,8 +861,15 @@ def gocutplane(log, all_data):
       if all_data['objective_cuts']:
         objective_cuts(log,all_data)
 
+    t1_cuts = time.time()
+
+    log.joint(' timing spent adding cuts ' + str(t1_cuts - t0_cuts) + '\n')
+
+    #breakexit('time adding cuts')
 
     ################## CUT MANAGEMENT ##################
+
+    t0_cutmanag = time.time()
 
     if all_data['jabrcuts'] and all_data['dropjabr'] and (all_data['round'] >= all_data['cut_age_limit']):
       drop_jabr(log,all_data)
@@ -868,6 +891,10 @@ def gocutplane(log, all_data):
     
     log.joint('\n')
 
+    t1_cutmanag = time.time()
+
+    log.joint(' time spent on cut management ' + str(t1_cutmanag - t0_cutmanag) + '\n')
+    #breakexit('time cut management')
 
     ################## ITERATION SUMMARY ##################
 
@@ -1018,7 +1045,9 @@ def gocutplane(log, all_data):
 
 
     all_data['round'] += 1
+    
 
+    #breakexit('iteration')
 
     ###########################################################
 

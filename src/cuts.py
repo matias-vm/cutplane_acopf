@@ -747,6 +747,8 @@ def jabr_cuts(log,all_data):
     
     all_data['NO_jabrs_violated'] = 0
     
+    t0_violation = time.time()
+
     log.joint(' checking for violations of Jabr inequalities ... \n')
     for branch in branches.values():
         f = branch.f
@@ -763,12 +765,25 @@ def jabr_cuts(log,all_data):
         log.joint(' all violations below threshold\n' )
         log.joint(' no more cuts to add for current threshold\n' )
         return None
-    
+
+
+    t1_violation = time.time()
+
+    log.joint(' time spent on violation Jabrs ' + str(t1_violation - t0_violation) + '\n')
+
     log.joint(' computing Jabr-envelope cuts ... \n')
+
+    t0_mostviol = time.time()
 
     num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction_jabr'] )
     most_violated       = dict(sorted(violated.items(), key = lambda x: x[1], reverse = True)[:num_selected])
     most_violated_count = 0
+
+    t1_mostviol = time.time()
+
+    log.joint(' time spent on most viol Jabrs ' + str(t1_mostviol - t0_mostviol) + '\n')
+
+    t0_compute  = time.time()
 
     for branch in most_violated.keys():
         if (most_violated_count == 0):
@@ -841,6 +856,11 @@ def jabr_cuts(log,all_data):
     log.joint('\n')
     log.joint(' number violated Jabrs ' + str(violated_count) + ' number Jabr-envelope cuts added ' + str(most_violated_count) + '\n')
     log.joint(' max error ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
+
+    t1_compute = time.time()
+
+    log.joint(' time spent on computing Jabrs ' + str(t1_compute - t0_compute) + '\n')
+
 
     all_data['most_violated_branch_jabr'] = most_violated_branch
     all_data['max_error_jabr']            = max_error

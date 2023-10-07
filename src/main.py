@@ -8,6 +8,7 @@ import reader
 from myutils import breakexit
 from versioner import *
 from log import danoLogger
+#from cutplane_numpy import gocutplane
 from cutplane import gocutplane
 
 def read_config(log, filename):
