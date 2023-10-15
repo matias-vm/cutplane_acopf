@@ -1,5 +1,17 @@
 #!/usr/bin/python
 
+###############################################################################
+#
+# This code was written and is being maintained by Matias Villagra,
+# PhD Student in Operations Research @ Columbia, supervised by 
+# Daniel Bienstock.
+#
+# Please report any bugs or issues (for sure there will be) to
+#                         mjv2153@columbia.edu
+#
+# Oct 2023
+###############################################################################
+
 import sys
 import os
 import numpy as np
@@ -8,7 +20,6 @@ import reader
 from myutils import breakexit
 from versioner import *
 from log import danoLogger
-#from cutplane_numpy import gocutplane
 from cutplane import gocutplane
 
 def read_config(log, filename):
@@ -91,6 +102,8 @@ def read_config(log, filename):
     knitro_sol                   = 0
     matpower_sol                 = 0
     writeACsol                   = 0
+    writesol                     = 0
+
 
     FeasibilityTol               = 1e-5
 
@@ -302,6 +315,9 @@ def read_config(log, filename):
             elif thisline[0] == 'i2':
                 i2            = 1
 
+            elif thisline[0] == 'writesol':
+                writesol      = 1
+
             elif thisline[0] == 'END':
                 break
                 
@@ -368,8 +384,8 @@ def read_config(log, filename):
         all_data['num_jabr_cuts_dropped']       = 0
         all_data['dropped_jabrs']               = []    
         all_data['jabr_cuts_info']              = {}
-        all_data['jabr_cuts_info_updated']      = {}
         all_data['max_error_jabr']              = 0
+        all_data['total_jabr_dropped']          = 0
 
     all_data['dropjabr']               = dropjabr
     all_data['jabr_validity']          = jabr_validity
@@ -384,11 +400,10 @@ def read_config(log, filename):
         all_data['num_limit_cuts_added']            = 0
         all_data['num_limit_cuts_dropped']          = 0
         all_data['limit_cuts_info']                 = {}
-        all_data['limit_cuts_info_updated']         = {}
         all_data['threshold_limit']                 = threshold_limit
         all_data['dropped_limit']                   = []
-    
         all_data['max_error_limit']                 = 0
+        all_data['total_limit_dropped']             = 0
 
     all_data['droplimit']                       = droplimit
     all_data['limit_validity']                  = limit_validity    
@@ -410,10 +425,10 @@ def read_config(log, filename):
         all_data['num_i2_cuts_added']         = 0
         all_data['num_i2_cuts_dropped']       = 0
         all_data['i2_cuts_info']              = {}
-        all_data['i2_cuts_info_updated']      = {}
         all_data['threshold_i2']              = threshold_i2
         all_data['dropped_i2']                = []
         all_data['max_error_i2']              = 0
+        all_data['total_i2_dropped']          = 0
 
     all_data['dropi2']                    = dropi2
     all_data['i2_validity']               = i2_validity
@@ -462,8 +477,8 @@ def read_config(log, filename):
 
         all_data['max_error_loss']              = 0
 
-    all_data['droploss'] = droploss
-    all_data['loss_validity']               = loss_validity
+    all_data['droploss']                      = droploss
+    all_data['loss_validity']                 = loss_validity
 
 
     all_data['writecuts']                     = writecuts
@@ -474,7 +489,7 @@ def read_config(log, filename):
     all_data['ftol_iterates']                 = ftol_iterates
 
     all_data['loud_cuts']                     = loud_cuts
-
+    all_data['writesol']                      = writesol
 
     return all_data
         
@@ -491,6 +506,16 @@ if __name__ == '__main__':
         mylogfile = sys.argv[2]
 
     log = danoLogger(mylogfile)
+
+    log.joint('\n  *********************************************************\n')
+    log.joint(' ***********************************************************\n')
+    log.joint(' ****                                                   ****\n')
+    log.joint(' ****    Initializing AC-OPF Cutting-plane algorithm    ****\n')
+    log.joint(' ****                                                   ****\n')
+    log.joint(' ***********************************************************\n')
+    log.joint('  *********************************************************\n\n')
+
+
     stateversion(log)
 
     all_data       = read_config(log,sys.argv[1])    

@@ -1,7 +1,13 @@
 ###############################################################################
-# This code was written and is being maintained by Matias Villagra
-# License? Supervised by Dan? Part of the code comes from the kit (e.g. the
-# reader, etc...
+#
+# This code was written and is being maintained by Matias Villagra,
+# PhD Student in Operations Research @ Columbia, supervised by 
+# Daniel Bienstock.
+#
+# Please report any bugs or issues (for sure there will be) to
+#                         mjv2153@columbia.edu
+#
+# Oct 2023
 ###############################################################################
 
 import sys
@@ -19,34 +25,26 @@ from cuts import *
       
 def gocutplane(log, all_data):
 
-  log.joint('\n ***********************************************************\n')
-  log.joint(' ***********************************************************\n')
-  log.joint(' ****                                                   ****\n')
-  log.joint(' ****    Initializing AC-OPF Cutting-plane algorithm    ****\n')
-  log.joint(' ****                                                   ****\n')
-  log.joint(' ***********************************************************\n')
-  log.joint(' ***********************************************************\n\n')
-
-
   formulation_start = time.time()
   themodel          = Model("Cutplane")
   buses             = all_data['buses']
   numbuses          = all_data['numbuses']
   branches          = all_data['branches']
+  numbranches       = all_data['numbranches']
   gens              = all_data['gens']
   IDtoCountmap      = all_data['IDtoCountmap']
   FeasibilityTol    = all_data['FeasibilityTol']
   threshold         = all_data['threshold']
 
-  ################## LOAD SOLUTION ##################
-  
+  ############################ LOAD SOLUTION ##################################
+
   if all_data['matpower_sol']:
     getsol_matpower(log,all_data)
 
   if all_data['knitro_sol']:
     getsol_knitro(log,all_data)
 
-  ################## VARIABLES ################## 
+  ################################ VARIABLES ##################################
 
   cvar    = {}
   svar    = {}
@@ -107,81 +105,87 @@ def gocutplane(log, all_data):
       varcount += 2
 
       #if model has quadratic objective and we linearize
-      if gen.costdegree == 2 and gen.costvector[0] != 0 and (all_data['linear_objective'] or all_data['hybrid']):
+      if( gen.costdegree == 2 and gen.costvector[0] != 0 and 
+          (all_data['linear_objective'] or all_data['hybrid']) ):
 
         GenTvar[gen] = themodel.addVar(obj = 0.0, lb = 0.0, ub = GRB.INFINITY,
                                        name = 't_g_' + str(gen.count) + '_' 
                                        + str(gen.nodeID))         
         varcount += 1
 
+
+
   for branch in branches.values():
-      f = branch.f
-      t = branch.t
-      count_of_f = IDtoCountmap[f]
-      count_of_t = IDtoCountmap[t]
-      maxprod = buses[count_of_f].Vmax*buses[count_of_t].Vmax
-      minprod = buses[count_of_f].Vmin*buses[count_of_t].Vmin
+    branchcount = branch.count
+    f           = branch.f
+    t           = branch.t
+    count_of_f  = IDtoCountmap[f]
+    count_of_t  = IDtoCountmap[t]
+    maxprod     = buses[count_of_f].Vmax*buses[count_of_t].Vmax
+    minprod     = buses[count_of_f].Vmin*buses[count_of_t].Vmin
 
-      #c variables 
-      ubound =  maxprod
-      lbound =  minprod*math.cos(branch.maxangle_rad)
+    #c variables 
+    ubound =  maxprod
+    lbound =  minprod*math.cos(branch.maxangle_rad)
 
-      if branch.upperanglenone == 1: 
-        ubound = maxprod
-        lbound = 0
+    if branch.upperanglenone == 1: 
+      ubound = maxprod
+      lbound = 0
 
-      if branch.loweranglenone == 1:
-        ubound = maxprod
-        lbound = 0                                                                         
-                                          
-      cvar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                     name = "c_" + str(branch.count) + "_" 
-                                     + str(f) + "_" + str(t))
+    if branch.loweranglenone == 1:
+      ubound = maxprod
+      lbound = 0                                                                         
 
-      #s variables
-      if branch.maxangle_rad > 0:      
-        ubound = maxprod*math.sin(branch.maxangle_rad)
-      else:
-        ubound = minprod*math.sin(branch.maxangle_rad)        
-      if branch.minangle_rad <= 0:
-        lbound = maxprod*math.sin(branch.minangle_rad)
-      else:
-        lbound = minprod*math.sin(branch.minangle_rad)
+    cvar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                   name = "c_" + str(branchcount) + "_" 
+                                   + str(f) + "_" + str(t))
 
-      if branch.upperanglenone == 1:
-        ubound = maxprod
-      if branch.loweranglenone == 1:
-        lbound = -maxprod
-                                  
-      svar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                     name = "s_" + str(branch.count) + "_" 
-                                     + str(f) + "_" + str(t))
+    #s variables
+    if branch.maxangle_rad > 0:      
+      ubound = maxprod*math.sin(branch.maxangle_rad)
+    else:
+      ubound = minprod*math.sin(branch.maxangle_rad)        
+    if branch.minangle_rad <= 0:
+      lbound = maxprod*math.sin(branch.minangle_rad)
+    else:
+      lbound = minprod*math.sin(branch.minangle_rad)
+
+    if branch.upperanglenone == 1:
+      ubound = maxprod
+    if branch.loweranglenone == 1:
+      lbound = -maxprod
+
+    svar[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                   name = "s_" + str(branchcount) + "_" 
+                                   + str(f) + "_" + str(t))
+
+    varcount +=2
     
-      varcount +=2
-      
+
+  
   for branch in branches.values():
-      f = branch.f
-      t = branch.t
-      count_of_f = IDtoCountmap[f]
-      count_of_t = IDtoCountmap[t]
+    f = branch.f
+    t = branch.t
+    count_of_f = IDtoCountmap[f]
+    count_of_t = IDtoCountmap[t]
 
-      ubound = branch.limit 
-      lbound = -branch.limit
+    ubound = branch.limit 
+    lbound = -branch.limit
 
-      Pvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                       name = "P_" + str(branch.count) + "_" 
-                                       + str(f) + "_" + str(t))
-      Pvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                       name = "P_" + str(branch.count) + "_" 
-                                       + str(t) + "_" + str(f))
-      Qvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                       name = "Q_" + str(branch.count) + "_" 
-                                       + str(f) + "_" + str(t))
-      Qvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
-                                       name = "Q_" + str(branch.count) + "_" 
-                                       + str(t) + "_" + str(f))
+    Pvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "P_" + str(branch.count) + "_" 
+                                     + str(f) + "_" + str(t))
+    Pvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "P_" + str(branch.count) + "_" 
+                                     + str(t) + "_" + str(f))
+    Qvar_f[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "Q_" + str(branch.count) + "_" 
+                                     + str(f) + "_" + str(t))
+    Qvar_t[branch] = themodel.addVar(obj = 0.0, lb = lbound, ub = ubound, 
+                                     name = "Q_" + str(branch.count) + "_" 
+                                     + str(t) + "_" + str(f))
 
-      varcount +=4 
+    varcount +=4 
 
   #i2 variables
   if all_data['i2']:
@@ -228,7 +232,7 @@ def gocutplane(log, all_data):
     all_data['i2var_f']   = i2var_f
     #all_data['i2var_t']  = i2var_f
 
-  ################## OBJECTIVE ################## 
+  ############################## OBJECTIVE ####################################
 
   log.joint(' creating objective...\n')
   #varobjcount = 0
@@ -239,13 +243,16 @@ def gocutplane(log, all_data):
     if gen.status > 0:
       constobjval += gen.costvector[gen.costdegree]
   
-  constvar = themodel.addVar(obj = constobjval, lb = 1.0, ub = 1.0, name = "constant")
+  constvar = themodel.addVar(obj = constobjval, lb = 1.0, ub = 1.0, 
+                             name = "constant")
   
   #varobjcount +=1
 
   #quad terms
-  objvar   = themodel.addVar(obj = 1.0, lb = -GRB.INFINITY, ub = GRB.INFINITY, name = "objvar")
-  qcostvar = themodel.addVar(obj = 1.0, lb = 0, ub = GRB.INFINITY, name = "qcostvar") 
+  objvar   = themodel.addVar(obj = 1.0, lb = -GRB.INFINITY, ub = GRB.INFINITY,
+                             name = "objvar")
+  qcostvar = themodel.addVar(obj = 1.0, lb = 0, ub = GRB.INFINITY, 
+                             name = "qcostvar") 
   
   #varobjcount +=2
 
@@ -260,18 +267,21 @@ def gocutplane(log, all_data):
     
   #linear terms
   if all_data['linear_objective'] or all_data['hybrid']:
-    lincostvar = themodel.addVar(obj = 0.0, lb = -GRB.INFINITY, ub = GRB.INFINITY, name = "lincostvar")
+    lincostvar = themodel.addVar(obj = 0.0, lb = -GRB.INFINITY, 
+                                 ub = GRB.INFINITY, name = "lincostvar")
     lincost    = themodel.addConstr(lincostvar <= objvar, name= "lincost")
     all_data['lincost'] = lincost
   else:
-    lincostvar = themodel.addVar(obj = 1.0, lb = -GRB.INFINITY, ub = GRB.INFINITY, name = "lincostvar")
+    lincostvar = themodel.addVar(obj = 1.0, lb = -GRB.INFINITY, 
+                                 ub = GRB.INFINITY, name = "lincostvar")
 
   #varobjcount += 1
 
   coeff       = [gen.costvector[gen.costdegree-1] for gen in gens.values()]
   variables   = [GenPvar[gen] for gen in gens.values()]
   lincostexpr = LinExpr(coeff, variables)
-  lincostdef  = themodel.addConstr(lincostexpr == lincostvar, name= "lincostdef")
+  lincostdef  = themodel.addConstr(lincostexpr == lincostvar, 
+                                   name= "lincostdef")
 
   #sumTvars if using linear_objective
   if all_data['linear_objective'] or all_data['hybrid']:
@@ -303,7 +313,7 @@ def gocutplane(log, all_data):
   all_data['lincostvar'] = lincostvar
   all_data['qcostvar']   = qcostvar
 
-  ################## CONSTRAINTS ################## 
+  ############################# CONSTRAINTS ###################################
 
   log.joint(' creating constraints...\n')
 
@@ -320,8 +330,9 @@ def gocutplane(log, all_data):
     count_of_t = IDtoCountmap[t]
 
     if branch.status == 0:
-      log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' + str(t) + ' is OFF\n')
-      breakexit('check, our reader does not include in "branches" braches with status = 0')
+      log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+                + str(t) + ' is OFF\n')
+      breakexit('check, reader does not include branches with status = 0')
 
     #  Gff cff + Gft cft + Bft sft
     constrname = "Pdef_"+str(branch.count)+"_"+str(f)+"_"+str(t)
@@ -389,7 +400,8 @@ def gocutplane(log, all_data):
     for branchid in bus.tobranchids.values():
       expr += Pvar_t[ branches[branchid] ]
 
-    if bus.Gs != 0 and ( ( len(bus.frombranchids) != 0 ) or ( len(bus.tobranchids) != 0 ) ):
+    if ( (bus.Gs != 0) and ( ( len(bus.frombranchids) != 0 ) 
+                             or ( len(bus.tobranchids) != 0 ) ) ):
       expr += bus.Gs*cvar[bus]
 
     themodel.addConstr(expr == Pinjvar[bus], name = constrname)
@@ -409,7 +421,8 @@ def gocutplane(log, all_data):
     for branchid in bus.tobranchids.values():
       expr += Qvar_t[ branches[branchid] ]
  
-    if bus.Bs != 0 and ( ( len(bus.frombranchids) != 0 ) or ( len(bus.tobranchids) != 0 ) ):
+    if ( (bus.Bs != 0) and ( ( len(bus.frombranchids) != 0 ) 
+                             or ( len(bus.tobranchids) != 0 ) ) ):
       expr += (-bus.Bs)*cvar[bus]
 
     themodel.addConstr(expr == Qinjvar[bus], name = constrname)
@@ -476,39 +489,34 @@ def gocutplane(log, all_data):
 
   formulation_end = time.time()
 
-  log.joint(' formulation time: %g\n' %(formulation_end - formulation_start))
+  all_data['formulation_time'] = formulation_end - formulation_start
 
+  log.joint(' formulation time: %g\n' % all_data['formulation_time'])
 
-  writebasemodel = False
-  if writebasemodel:
+  # Write model to .lp file
+  if all_data['writelps']:
     log.joint(' writing to lpfile ' + all_data['lpfilename'] + '\n')  
     themodel.write(all_data['lpfilename'])
 
-  ################## INIT DATA STRUCTURES FOR CUTS ##################
+  ###################### INIT DATA STRUCTURES FOR CUTS ########################
 
   if all_data['jabrcuts']:
-    jabr_cuts_info         = all_data['jabr_cuts_info']
-    jabr_cuts_info_updated = all_data['jabr_cuts_info_updated']
+    jabr_cuts_info = all_data['jabr_cuts_info']
 
     for branch in branches.values():
-      jabr_cuts_info[branch]         = {}
-      jabr_cuts_info_updated[branch] = {}
+      jabr_cuts_info[branch] = {}
 
   if all_data['i2cuts']:
-    i2_cuts_info         = all_data['i2_cuts_info']
-    i2_cuts_info_updated = all_data['i2_cuts_info_updated']
+    i2_cuts_info = all_data['i2_cuts_info']
 
     for branch in branches.values():
-      i2_cuts_info[branch]         = {}
-      i2_cuts_info_updated[branch] = {}
+      i2_cuts_info[branch] = {}
 
   if all_data['limitcuts']:
-    limit_cuts_info         = all_data['limit_cuts_info']
-    limit_cuts_info_updated = all_data['limit_cuts_info_updated']
+    limit_cuts_info = all_data['limit_cuts_info']
 
     for branch in branches.values():
-      limit_cuts_info[branch]         = {}
-      limit_cuts_info_updated[branch] = {}
+      limit_cuts_info[branch] = {}
 
   if all_data['linear_objective'] or all_data['hybrid']:
     dicGenPvalues = {}
@@ -516,7 +524,7 @@ def gocutplane(log, all_data):
       dicGenPvalues[gen] = []
     all_data['dicGenPvalues'] = dicGenPvalues
 
-  ################## FIXING/WRITING AN AC SOLUTION ################## 
+  ######################## FIXING/WRITING AN AC SOLUTION ######################
 
   if all_data['fixflows']:
     fixflows(log,all_data)
@@ -531,10 +539,11 @@ def gocutplane(log, all_data):
     writeACsol(log,all_data)
     return None
 
-  ################## PARAMETERS ##################
+  ########################### SOLVER PARAMETERS ###############################
 
   themodel.Params.Method    = all_data['solver_method']
   themodel.Params.Crossover = all_data['crossover'] 
+
   if all_data['solver_method'] == 2:
     themodel.Params.BarHomogeneous = 1
     themodel.Params.BarConvTol     = 1e-6
@@ -547,509 +556,298 @@ def gocutplane(log, all_data):
   #themodel.Params.Logfile = 'newlogs/' + all_data['casename'] + '_gurobi.log'
   themodel.Params.Logfile = all_data['casename'] + '_gurobi.log'
 
-
-  ################## PRECOMPUTED CUTS ##################
+  ######################### READING AND LOADING CUTS ##########################
 
   if all_data['addcuts']:
-    if add_cuts(log,all_data):
-      themodel.update()
 
-    themodel.write(all_data['casename']+'_precomputed_cuts.lp')
-    log.joint(' pre-computed cuts added\n')
+    t0_cuts = time.time()
 
-  ################## CUTPLANE MAIN LOOP ##################
+    if all_data['max_rounds'] > 1:
+      add_cuts_ws(log,all_data)
+    else:
+      add_cuts(log,all_data)
+
+    themodel.update()
+
+    t1_cuts = time.time()
+
+    all_data['addcuts_time'] = t1_cuts - t0_cuts
+
+    log.joint(' pre-computed cuts added and model updated\n')
+
+    log.joint(' reading and loading cuts time = '
+              + str(all_data['addcuts_time']) + '\n')
+
+    if all_data['writelps']:
+      themodel.write(all_data['casename']+'_precomputed_cuts.lp')
+      log.joint(' model with precomputed written to .lp file\n')
+
+  ########################## CUTPLANE MAIN LOOP ###############################
 
   all_data['round']                  = 1
   all_data['runtime']                = time.time() - all_data['T0']
-  all_data['T0_cutplane']            = time.time()
   all_data['cumulative_solver_time'] = 0
   all_data['ftol_counter']           = 0
   oldobj                             = 1
   gap                                = 1e20
 
 
-  while (all_data['round'] <= all_data['max_rounds']) and (all_data['runtime'] <= all_data['max_time']) and (all_data['ftol_counter'] <= all_data['ftol_iterates']):
+  while ((all_data['round'] <= all_data['max_rounds']) and 
+         (all_data['runtime'] <= all_data['max_time']) and 
+         (all_data['ftol_counter'] <= all_data['ftol_iterates'])):
     
 
     #new tolerances
-    if (all_data['ftol_counter'] == 4) or (all_data['max_rounds'] == 1) or (
-        all_data['runtime'] > 150):
+    if ((all_data['ftol_counter'] == 4) or (all_data['max_rounds'] == 1) 
+        or (all_data['runtime'] > 150)):
+
       themodel.Params.BarHomogeneous = 1
       themodel.Params.NumericFocus   = 1 #off and then on doesnt help
       themodel.Params.BarConvTol     = 1e-6
       themodel.Params.FeasibilityTol = 1e-6
       themodel.Params.OptimalityTol  = 1e-6
 
-    #hybrid algorithm
+
+    ########################### HYBRID ALGORITHM ##############################
+
     if all_data['hybrid']:
       hybrid(log,all_data)
-
-
-    #####
-    #themodel.write('case3.lp')
-    #breakexit('case3.lp')
   
-    ################## SOLVING MODEL ##################
+    ############################ SOLVING MODEL ################################
 
-    log.joint(' solving model with method ' + str(themodel.params.method) + '\n')
-    t0_solve = time.time()
-    themodel.optimize()
-    t1_solve = time.time()
+    cutplane_optimize(log,all_data)
 
-    if themodel.status == GRB.status.INF_OR_UNBD:
-      log.joint('->LP infeasible or unbounded\n')
-      log.joint('turning presolve off and reoptimizing\n')
-      themodel.params.presolve = 0
-      log.joint(' params: method ' + str(themodel.params.method) + ' BarConvTol ' + str(themodel.Params.BarConvTol) + ' BarHomogeneous ' + str(themodel.params.BarHomogeneous) + '\n')
-      t0_solve = time.time()
-      themodel.optimize()
-      t1_solve = time.time()
+    ########################### STORING SOLUTION ##############################
 
-      all_data['runtime'] = t1_solve - all_data['T0']
+    if all_data['writesol'] == 0:
 
-      log.joint(" writing casename, obj and runtime to summary_ws.log\n")
-
-      summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
-      summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' + str(themodel.status) + ' runtime ' + str(all_data['runtime']) + ' iterations ' + str(all_data['round']) + '\n')
-
-      summary_ws.close()
-
-      log.joint(' overall time = %g\n' % all_data['runtime'] )
-      log.joint('bye.\n')
-      exit(0)
-
-    elif themodel.status == GRB.status.INFEASIBLE:
-      log.joint('->LP infeasible\n')
-
-      all_data['runtime'] = time.time() - all_data['T0']
-
-      log.joint(" writing casename, obj and runtime to summary_ws.log\n")
-
-      summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
-      summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' + str(themodel.status) + ' runtime ' + str(all_data['runtime']) + ' iterations ' + str(all_data['round']) + '\n')
-
-      summary_ws.close()
-
-      log.joint(' solver runtime = %g\n' % (t1_solve - t0_solve) )
-      log.joint(' overall time = %g\n' % all_data['runtime'] )
-      log.joint('bye.\n')
-      exit(0)
-
-    elif themodel.status == GRB.status.UNBOUNDED:
-      log.joint('->LP unbounded\n')
-      log.joint(' solver runtime = %g\n' % (t1_solve - t0_solve) )
-      return themodel.status, 0
-
-    elif themodel.status != GRB.status.OPTIMAL:
-    
-      log.joint('->solver terminated with status ' + str(themodel.status) + '\n')
-
-      all_data['runtime'] = time.time() - all_data['T0']
-
-      log.joint(" writing casename, status and runtime to summary_ws.log\n")
-
-      summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
-      summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' + str(themodel.status) + ' runtime ' + str(all_data['runtime']) + ' iterations ' + str(all_data['round']) + '\n')
-
-      summary_ws.close()
-
-      #log.joint(' solver runtime = %g\n' % (t1_solve - t0_solve) )
-      #log.joint(' overall time = %g\n' % all_data['runtime'] )
-      #log.joint('bye.\n')
-      #exit(0)
-
-    all_data['cumulative_solver_time'] += (t1_solve - t0_solve)  
-
-
-    ################## WRITING SOL TO A FILE ##################
-    
-    namesolfile = 'sol_ws_' + all_data['casename'] + '.txt'
-    #namesolfile = 'sols_warmstarted/sol_ws_' + all_data['casename'] + '.txt'
-    #namesolfile = 'cutplane_sols/cutplane_sol_' + all_data['casename'] + '.txt'
-    solfile     = open(namesolfile,'a')
-    solfile.write('round' + str(all_data['round']) + '\n' )
-    solfile.write('obj ' + str(themodel.ObjVal) + '\n')
-
-    #values
-    log.joint(' storing current solution...\n')
-
-    newobj        = themodel.ObjVal
-    newstatus     = themodel.status
-    
-    cvalues       = {}
-    svalues       = {}
-    GenPvalues    = {}
-    GenQvalues    = {}
-    plossvalues   = {}
-    qlossvalues   = {}
-    qgains        = {}
-    qlossvalues_3 = {}
-    Pfvalues      = {}
-    Qfvalues      = {}
-    Ptvalues      = {}
-    Qtvalues      = {}
-    i2fvalues     = {}
-    #i2tvalues     = {}    
-    #Pinjvalues    = {}
-    #Qinjvalues    = {}
-
-
-    for bus in buses.values():
-      cvalues[bus] = cvar[bus].x
-      varname      = cvar[bus].varname + ' = '
-      lines        = [varname,str(cvalues[bus]),'\n']
-      solfile.writelines(lines)
-      #Pinjvalues[bus] = Pinjvar[bus].x
-      #Qinjvalues[bus] = Qinjvar[bus].x
+      log.joint(' storing current solution ...\n')
       
-    for branch in branches.values():
-      f                   = branch.f
-      t                   = branch.t
-      count_of_f          = IDtoCountmap[f]
-      count_of_t          = IDtoCountmap[t]
-      bus_f               = buses[count_of_f]
-      bus_t               = buses[count_of_t]
-      bc                  = branch.bc
-      ratio               = branch.ratio
+      all_data['Pfvalues'] = themodel.getAttr("X",Pvar_f)
+      all_data['Qfvalues'] = themodel.getAttr("X",Qvar_f)
+      all_data['Ptvalues'] = themodel.getAttr("X",Pvar_t)
+      all_data['Qtvalues'] = themodel.getAttr("X",Qvar_t)
+      all_data['cvalues']  = themodel.getAttr("X",cvar)
+      all_data['svalues']  = themodel.getAttr("X",svar)
 
-      cvalues[branch]       = cvar[branch].x
-      svalues[branch]       = svar[branch].x
-      plossvalues[branch]   = Pvar_f[branch].x + Pvar_t[branch].x
-      qlossvalues[branch]   = Qvar_f[branch].x + Qvar_t[branch].x
-      qgains[branch]        = - (bc/2) * ( (cvalues[bus_f] / (ratio**2) ) + cvalues[bus_t] )
-      Pfvalues[branch]      = Pvar_f[branch].x
-      Ptvalues[branch]      = Pvar_t[branch].x
-      Qfvalues[branch]      = Qvar_f[branch].x
-      Qtvalues[branch]      = Qvar_t[branch].x
+      # numpy
+      # all_data['cvalues_array']  = np.zeros(numbranches, dtype = 'float')
+      # all_data['svalues_array']  = np.zeros(numbranches, dtype = 'float')
+      # all_data['cfvalues_array'] = np.zeros(numbranches, dtype = 'float')
+      # all_data['ctvalues_array']  = np.zeros(numbranches, dtype = 'float')
 
-      cvarname = cvar[branch].varname + ' = '
-      svarname = svar[branch].varname + ' = '
-      cslines  = [cvarname,str(cvalues[branch]),'\n',svarname,str(svalues[branch]),'\n']
-      Plines   = [Pvar_f[branch].varname + ' = ',str(Pvar_f[branch].x),'\n',Pvar_t[branch].varname + ' = ',str(Pvar_t[branch].x),'\n']
-      Qlines   = [Qvar_f[branch].varname + ' = ',str(Qvar_f[branch].x),'\n',Qvar_t[branch].varname + ' = ',str(Qvar_t[branch].x),'\n']
+      # count = 0 
+      # for branch in branches.values():
+      #   all_data['cvalues_array'][count] = all_data['cvalues'][branch]
+      #   all_data['svalues_array'][count] = all_data['svalues'][branch]
+        
+      #   busf = buses[IDtoCountmap[branch.f]]
+      #   bust = buses[IDtoCountmap[branch.t]]
+        
+      #   all_data['cfvalues_array'][count] = all_data['cvalues'][busf]
+      #   all_data['ctvalues_array'][count] = all_data['cvalues'][bust]        
+        
+      #   count += 1
 
-      solfile.writelines(cslines)
-      solfile.writelines(Plines)
-      solfile.writelines(Qlines)
+      # all_data['Pfvalues_array'] = np.array(all_data['Pfvalues'].values(), dtype = 'float')
+      # all_data['Qfvalues_array'] = np.array(all_data['Qfvalues'].values(), dtype = 'float')
+      # all_data['Ptvalues_array'] = np.array(all_data['Ptvalues'].values(), dtype = 'float')
+      # all_data['Qtvalues_array'] = np.array(all_data['Qtvalues'].values(), dtype = 'float')
+      ##########
+
+
+      #this is only **needed** when using objective cuts...
+      #all_data['GenPvalues'] = themodel.getAttr("X",GenPvar)
+      #all_data['GenQvalues'] = themodel.getAttr("X",GenQvar)
+      #linear objective and objective cuts and hybrid disable if writesol = 0
 
       if all_data['i2']:
-        i2fvalues[branch] = i2var_f[branch].x
-        i2line            = [i2var_f[branch].varname + ' = ',str(i2fvalues[branch]),'\n']   
-        solfile.writelines(i2line)
-        #i2tvalues[branch] = i2var_t[branch].x 
-
-
-    for gen in gens.values():
-      GenPvalues[gen] = GenPvar[gen].x
-      GenQvalues[gen] = GenQvar[gen].x
-      GenPvarname     = GenPvar[gen].varname + ' = '
-      GenQvarname     = GenQvar[gen].varname + ' = '
-      GenPlines       = [GenPvarname,str(GenPvalues[gen]),'\n']
-      GenQlines       = [GenQvarname,str(GenQvalues[gen]),'\n']
+        all_data['i2fvalues'] = themodel.getAttr("X",i2var_f)
       
-      solfile.writelines(GenPlines)
-      solfile.writelines(GenQlines)
+      log.joint(' done storing values\n')
+      
+    ####################### WRITING SOL TO A FILE #############################
+    
+    if all_data['writesol']:
+
+      namesolfile = 'sol_ws_' + all_data['casename'] + '.txt'
+      #namesolfile = 'sols_warmstarted/sol_ws_' + all_data['casename'] + '.txt'
+      #namesolfile = 'cutplane_sols/cutplane_sol_' + all_data['casename'] + '.txt'
+      solfile     = open(namesolfile,'a')
+      solfile.write('round' + str(all_data['round']) + '\n' )
+      solfile.write('obj ' + str(all_data['objval']) + '\n')
+
+      #values
+      log.joint(' storing current solution...\n')
+
+      cvalues       = {}
+      svalues       = {}
+      GenPvalues    = {}
+      GenQvalues    = {}
+      plossvalues   = {}
+      qlossvalues   = {}
+      qgains        = {}
+      qlossvalues_3 = {}
+      Pfvalues      = {}
+      Qfvalues      = {}
+      Ptvalues      = {}
+      Qtvalues      = {}
+      i2fvalues     = {}
+      #i2tvalues     = {}    
+
+
+      for bus in buses.values():
+        cvalues[bus] = cvar[bus].x
+        varname      = cvar[bus].varname + ' = '
+        lines        = [varname,str(cvalues[bus]),'\n']
+        solfile.writelines(lines)
+      
+      for branch in branches.values():
+        f                   = branch.f
+        t                   = branch.t
+        count_of_f          = IDtoCountmap[f]
+        count_of_t          = IDtoCountmap[t]
+        bus_f               = buses[count_of_f]
+        bus_t               = buses[count_of_t]
+        bc                  = branch.bc
+        ratio               = branch.ratio
+
+        cvalues[branch]       = cvar[branch].x
+        svalues[branch]       = svar[branch].x
+        plossvalues[branch]   = Pvar_f[branch].x + Pvar_t[branch].x
+        qlossvalues[branch]   = Qvar_f[branch].x + Qvar_t[branch].x
+        qgains[branch]        = - (bc/2) * ( (cvalues[bus_f] / (ratio**2) ) + cvalues[bus_t] )
+        Pfvalues[branch]      = Pvar_f[branch].x
+        Ptvalues[branch]      = Pvar_t[branch].x
+        Qfvalues[branch]      = Qvar_f[branch].x
+        Qtvalues[branch]      = Qvar_t[branch].x
+
+        cvarname = cvar[branch].varname + ' = '
+        svarname = svar[branch].varname + ' = '
+        cslines  = [cvarname,str(cvalues[branch]),'\n',svarname,str(svalues[branch]),'\n']
+        Plines   = [Pvar_f[branch].varname + ' = ',str(Pvar_f[branch].x),'\n',Pvar_t[branch].varname + ' = ',str(Pvar_t[branch].x),'\n']
+        Qlines   = [Qvar_f[branch].varname + ' = ',str(Qvar_f[branch].x),'\n',Qvar_t[branch].varname + ' = ',str(Qvar_t[branch].x),'\n']
+
+        solfile.writelines(cslines)
+        solfile.writelines(Plines)
+        solfile.writelines(Qlines)
+
+        if all_data['i2']:
+          i2fvalues[branch] = i2var_f[branch].x
+          i2line            = [i2var_f[branch].varname + ' = ',str(i2fvalues[branch]),'\n']   
+          solfile.writelines(i2line)
+          #i2tvalues[branch] = i2var_t[branch].x 
+
+
+      for gen in gens.values():
+        GenPvalues[gen] = GenPvar[gen].x
+        GenQvalues[gen] = GenQvar[gen].x
+        GenPvarname     = GenPvar[gen].varname + ' = '
+        GenQvarname     = GenQvar[gen].varname + ' = '
+        GenPlines       = [GenPvarname,str(GenPvalues[gen]),'\n']
+        GenQlines       = [GenQvarname,str(GenQvalues[gen]),'\n']
+      
+        solfile.writelines(GenPlines)
+        solfile.writelines(GenQlines)
+
+        if all_data['linear_objective'] or all_data['hybrid']:
+          if gen.costdegree == 2 and gen.costvector[0] != 0:
+            gen_values = dicGenPvalues[gen]
+            bisect.insort(gen_values,GenPvar[gen].x)
+
+      solfile.close()
+        
+      all_data['cvalues']                 = cvalues
+      all_data['svalues']                 = svalues
+      all_data['GenPvalues']              = GenPvalues
+      all_data['GenQvalues']              = GenQvalues
+      all_data['plossvalues']             = plossvalues
+      all_data['qlossvalues']             = qlossvalues
+      all_data['total_active_gen']        = sum(GenPvalues.values())
+      all_data['total_active_losses']     = sum(plossvalues.values())
+      all_data['total_reactive_gen']      = sum(GenQvalues.values())
+      all_data['total_reactive_losses']   = sum(qlossvalues.values())
+      all_data['total_reactive_gains']    = sum(qgains.values())
+      all_data['Pfvalues']                = Pfvalues
+      all_data['Ptvalues']                = Ptvalues
+      all_data['Qfvalues']                = Qfvalues
+      all_data['Qtvalues']                = Qtvalues
+
+      if all_data['i2']:
+        all_data['i2fvalues'] = i2fvalues
+        #all_data['i2tvalues'] = i2tvalues
 
       if all_data['linear_objective'] or all_data['hybrid']:
-        if gen.costdegree == 2 and gen.costvector[0] != 0:
-          gen_values = dicGenPvalues[gen]
-          bisect.insort(gen_values,GenPvar[gen].x)
+        all_data['dicGenPvalues'] = dicGenPvalues
 
-    solfile.close()
-        
-    all_data['cvalues']                 = cvalues
-    all_data['svalues']                 = svalues
-    all_data['GenPvalues']              = GenPvalues
-    all_data['GenQvalues']              = GenQvalues
-    all_data['plossvalues']             = plossvalues
-    all_data['qlossvalues']             = qlossvalues
-    all_data['total_active_gen']        = sum(GenPvalues.values())
-    all_data['total_active_losses']     = sum(plossvalues.values())
-    all_data['total_reactive_gen']      = sum(GenQvalues.values())
-    all_data['total_reactive_losses']   = sum(qlossvalues.values())
-    all_data['total_reactive_gains']    = sum(qgains.values())
-    all_data['Pfvalues']                = Pfvalues
-    all_data['Ptvalues']                = Ptvalues
-    all_data['Qfvalues']                = Qfvalues
-    all_data['Qtvalues']                = Qtvalues
-    #all_data['Pinjvalues']              = Pinjvalues
-    #all_data['Qinjvalues']              = Qinjvalues
+      log.joint(' done storing and writing down values\n')
 
+    ########################### ROUND STATISTICS ##############################
 
-    if all_data['i2']:
-      all_data['i2fvalues'] = i2fvalues
-      #all_data['i2tvalues'] = i2tvalues
+    cutplane_stats(log,all_data)
 
-    if all_data['linear_objective'] or all_data['hybrid']:
-      all_data['dicGenPvalues'] = dicGenPvalues
+    ######################### SUMMARY EXPERIMENTS #############################
 
-    log.joint(' done storing values\n')
+    all_data['runtime'] = time.time() - all_data['T0']
 
-    ################## CUTS ##################
-    
-    t0_cuts = time.time()
+    log.joint("\n writing casename, opt stauts, obj and runtime to summary_ws.log\n")
 
-    log.joint(' adding cuts...\n')
+    summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
 
-    t0_jabr = time.time()
+    summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' 
+                     + str(all_data['optstatus']) + ' obj ' 
+                     + str(all_data['objval']) + ' runtime ' 
+                     + str(all_data['runtime']) + ' iterations ' 
+                     + str(all_data['round']) + '\n')
 
-    if all_data['jabrcuts']:
-      jabr_cuts(log,all_data)
-    
-      if all_data['NO_jabrs_violated']:
-        if all_data['threshold'] > all_data['tolerance']:
-          all_data['threshold'] *= 1e-01
-          log.joint(' threshold updated to ' + str(all_data['threshold']) + '\n' )
-          #continue
-        # else:
-        #   log.joint(' threshold below ' + str(all_data['tolerance']) + ', we are done\n' )
-        #   if all_data['hybrid'] == 0:
-        #     log.joint(' writing to lpfile ' + all_data['lpfilename_cuts'] + '\n')  
-        #     themodel.write(all_data['lpfilename_cuts'])
-        #     log.joint(' total runtime = ' + str(time.time() - all_data['T0']) )
-        #     log.joint(' bye.\n')
-        #     return None
+    summary_ws.close()
 
-    t1_jabr = time.time()
+    if all_data['max_rounds'] == 1:
+      log.joint(' bye!\n')
+      sys.exit(0)
 
-    log.joint(' time spent on Jabrs ' + str(t1_jabr - t0_jabr) + '\n')
-    #breakexit(' jabrs ')
+    ############################### CUTS ######################################
 
-    if all_data['i2cuts']:
-      i2_cuts(log,all_data)
+    # Cuts' computations and management
+    cutplane_cuts(log,all_data)
 
-      if all_data['NO_i2_cuts_violated']:
-        if all_data['threshold_i2'] > all_data['tolerance']:
-          all_data['threshold_i2'] *= 1e-01
-          log.joint(' threshold updated to ' + str(all_data['threshold_i2']) + '\n' )
-          #continue
-        # else:
-        #   log.joint(' threshold below ' + str(all_data['tolerance']) + ', we are done\n' )
-        #   if all_data['hybrid'] == 0:
-        #     log.joint(' writing to lpfile ' + all_data['lpfilename_cuts'] + '\n')  
-        #     themodel.write(all_data['lpfilename_cuts'])
-        #     log.joint(' total runtime = ' + str(time.time() - all_data['T0']) )
-        #     log.joint(' bye.\n')
-        #     return None
-      
-      if all_data['NO_i2_cuts_violated']:
-        sys.exit(0)
-
-    if all_data['limitcuts']:
-      limit_cuts(log,all_data)
-      if all_data['NO_limit_cuts_violated']:
-        if all_data['threshold_limit'] > all_data['tolerance']:
-          all_data['threshold_limit'] *= 1e-01
-          log.joint(' threshold updated to ' + str(all_data['threshold_limit']) + '\n' )
-          #continue
-        else:
-          log.joint(' threshold below ' + str(all_data['tolerance']) + ', we continue\n' )
-
-
-    if all_data['losscuts']:
-      loss_cuts(log,all_data)
-      if all_data['NO_loss_violated']:
-        if all_data['threshold_limit'] > all_data['tolerance']:
-          all_data['threshold_limit'] *= 1e-01
-          log.joint(' threshold updated to ' + str(all_data['threshold_limit']) + '\n' )
-          #continue
-        else:
-          log.joint(' threshold below ' + str(all_data['tolerance']) + ', we continue\n' )
-
-
-    if all_data['linear_objective']:
-      if all_data['objective_cuts']:
-        objective_cuts(log,all_data)
-
-    t1_cuts = time.time()
-
-    log.joint(' timing spent adding cuts ' + str(t1_cuts - t0_cuts) + '\n')
-
-    #breakexit('time adding cuts')
-
-    ################## CUT MANAGEMENT ##################
-
-    t0_cutmanag = time.time()
-
-    if all_data['jabrcuts'] and all_data['dropjabr'] and (all_data['round'] >= all_data['cut_age_limit']):
-      drop_jabr(log,all_data)
-
-    if all_data['i2cuts'] and all_data['dropi2'] and (all_data['round'] >= all_data['cut_age_limit']):
-      drop_i2(log,all_data)
-
-    if all_data['limitcuts'] and all_data['droplimit'] and (all_data['round'] >= all_data['cut_age_limit']):
-      drop_limit(log,all_data)
-      
-    if all_data['losscuts'] and all_data['droploss'] and (all_data['round'] >= all_data['cut_age_limit']):
-      drop_loss(log,all_data)
-
-    if all_data['loss_inequalities'] and all_data['droploss'] and (all_data['round'] >= all_data['cut_age_limit']):
-      drop_loss(log,all_data)
-      
-    if all_data['cut_analysis']:
-      cut_analysis(log,all_data)
-    
-    log.joint('\n')
-
-    t1_cutmanag = time.time()
-
-    log.joint(' time spent on cut management ' + str(t1_cutmanag - t0_cutmanag) + '\n')
-    #breakexit('time cut management')
-
-    ################## ITERATION SUMMARY ##################
-
-    log.joint(' ******************************************\n')
-    
-    log.joint(' casename = %s\n' % all_data['casename'] )
-    log.joint(' round = %g\n' % all_data['round'] )
-    log.joint(' objective = %g\n' % themodel.ObjVal)
-    if type(all_data['primal_bound']) == float:
-      primal_bound = all_data['primal_bound']
-      gap = 100 * ((primal_bound - themodel.ObjVal) / primal_bound)
-      log.joint(' primal_bound = %g\n' % primal_bound)
-      log.joint(' gap (percent) = %g\n' % gap)
-    log.joint(' solver status = ' + str(themodel.status) + ' solver method = ' + str(themodel.params.method) + '\n')
-    log.joint(' BarConTol = ' + str(themodel.params.BarConvTol) 
-              + ' FeasTol = ' + str(themodel.params.FeasibilityTol) 
-              + ' OptTol = ' + str(themodel.params.OptimalityTol) + '\n') 
-    log.joint(' -- active power --\n')
-    log.joint(' total active power generation = %g\n' % all_data['total_active_gen'] )
-    log.joint(' active power losses = %g\n' % all_data['total_active_losses'] )
-    # if all_data['mp_txt']:
-    #   mp_ploss = all_data['mp_ploss']
-    #   mp_sum_plosses = (1/100)*sum(mp_ploss.values())
-    #   log.joint(' primal bound active power losses = %g\n' % mp_sum_plosses )
-    #   ploss_gap = 100*(mp_sum_plosses - all_data['total_active_losses'])/mp_sum_plosses
-    #   log.joint(' active loss gap (percent) = %g\n' % ploss_gap)
-    log.joint(' -- reactive power --\n')
-    log.joint(' total reactive power generation = %g\n' % all_data['total_reactive_gen'] )
-    log.joint(' reactive power net losses = %g\n' % all_data['total_reactive_losses'] )
-    log.joint(' reactive power gains = %g\n' % - all_data['total_reactive_gains'] )
-    # if all_data['mp_txt']:
-    #   mp_qloss          = all_data['mp_qloss']
-    #   mp_qfchg          = all_data['mp_qfchg']
-    #   mp_qtchg          = all_data['mp_qtchg']
-    #   mp_sum_qlosses    = (1/100)*sum(mp_qloss.values())
-    #   mp_sum_qgains     = (1/100)*(sum(mp_qfchg.values()) + sum(mp_qtchg.values()))
-    #   mp_sum_qnetlosses = mp_sum_qlosses - mp_sum_qgains
-    #   log.joint(' primal bound reactive power net losses = %g\n' % mp_sum_qnetlosses )
-    #   #log.joint(' primal bound reactive power losses = %g\n' % mp_sum_qlosses )
-    #   log.joint(' primal bound reactive power gains = %g\n' % mp_sum_qgains )
-    #   qloss_gap = 100*(mp_sum_qnetlosses - all_data['total_reactive_losses'])/mp_sum_qnetlosses
-    #   log.joint(' net reactive loss gap (percent) = %g\n' % qloss_gap)
-    log.joint(' -- CUTS --\n')
-    if all_data['addcuts']:
-      log.joint(' number of precomputed Jabr-envelope cuts = ' 
-                + str(all_data['addcuts_numjabrcuts']) + '\n')
-      log.joint(' number of precomputed i2-envelope cuts = ' 
-                + str(all_data['addcuts_numi2cuts']) + '\n')
-      log.joint(' number of precomputed limit-envelope cuts = ' 
-                + str(all_data['addcuts_numlimitcuts']) + '\n')  
-    log.joint(' cut age limit = %g\n' % all_data['cut_age_limit'])
-    log.joint(' parallel-cuts threshold = %g\n' % all_data['threshold_dotprod'] )
-    log.joint(' initial threshold = %g\n' % all_data['initial_threshold'] )
-    log.joint(' threshold = %g\n' % all_data['tolerance'] )
-    if all_data['jabrcuts']:
-      log.joint(' -- Jabr-envelope cuts --\n')
-      log.joint(' current number of Jabr-envelope cuts = %g\n' % all_data['num_jabr_cuts'])
-      log.joint(' number of Jabr-envelope cuts added in current round = %g\n' % all_data['num_jabr_cuts_added'] )
-      log.joint(' top percent of most violated Jabr-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_jabr']) )
-      log.joint(' max error (Jabrs) in current round = %g\n' % all_data['max_error_jabr'] )
-      log.joint(' current Jabr-envelope cuts threshold = %g\n' % all_data['threshold'] )
-    if all_data['dropjabr']:
-      log.joint(' number of Jabr-envelope cuts dropped in current round = %g\n' % all_data['num_jabr_cuts_dropped'] )
-
-    if all_data['i2cuts']:
-      log.joint(' -- i2-envelope cuts --\n')
-      log.joint(' current number of i2-envelope cuts = %g\n' % all_data['num_i2_cuts'])
-      log.joint(' number of i2-envelope cuts added in current round = %g\n' % all_data['num_i2_cuts_added'] )
-      log.joint(' top percent of most violated i2-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_i2']) )
-      log.joint(' max error (i2) in current round = %g\n' % all_data['max_error_i2'] )
-      log.joint(' current i2-envelope threshold = %g\n' % all_data['threshold_i2'] )
-    if all_data['dropi2']:
-      log.joint(' number of i2-envelope cuts dropped in current round = %g\n' % all_data['num_i2_cuts_dropped'] )
-
-    if all_data['limitcuts']:
-      log.joint(' -- Limit-envelope cuts --\n')
-      log.joint(' current number of limit-envelope cuts = %g\n' % all_data['num_limit_cuts'])
-      log.joint(' number of limit-envelope cuts added in current round = %g\n' % all_data['num_limit_cuts_added'] )
-      log.joint(' top percent of most violated limit-envelope cuts added = %g\n' % (100*all_data['most_violated_fraction_limit']) )
-      log.joint(' max error (limit) in current round = %g\n' % all_data['max_error_limit'] )
-      log.joint(' initial limit-envelope threshold = %g\n' % all_data['threshold_limit'] )
-    if all_data['droplimit']:
-      log.joint(' number of limit-envelope cuts dropped in current round = %g\n' % all_data['num_limit_cuts_dropped'] )
-
-    if all_data['loss_inequalities']:
-      log.joint(' -- loss inequalities --\n')
-      log.joint(' current number of loss inequalities = %g\n' % all_data['num_loss_cuts'])
-      log.joint(' number of loss inequalities added in current round = %g\n' % all_data['num_loss_cuts_added'] )
-      log.joint(' top percent of most violated loss inequalities added = %g\n' % (100*all_data['most_violated_fraction_loss'])
- )
-      log.joint(' max error (loss) in current round = %g\n' % all_data['max_error_loss'] )
-    if all_data['droploss']:
-      log.joint(' number of loss ineqs dropped in current round = %g\n' % all_data['num_loss_cuts_dropped'] )
-    if all_data['mincut']:
-      log.joint(' current N = ' + str(all_data['size_supernodes']) + '\n')
-    if all_data['linear_objective'] or all_data['hybrid']:
-      log.joint(' -- objective cuts --\n')
-      log.joint(' current number of objective-cuts = %g\n' % all_data['num_objective_cuts'])
-      log.joint(' objective-cuts threshold = %g\n' % all_data['threshold_objcuts'])    
-    log.joint(' -- runtimes --\n')
-    log.joint(' solver runtime current round = ' + str((t1_solve - t0_solve)) + '\n')
-    log.joint(' cumulative solver time = %g\n' % all_data['cumulative_solver_time']) 
-    log.joint(' time so far (cutplane) = %g\n' % (time.time() - all_data['T0_cutplane']) )
-    log.joint(' time so far (overall) = %g\n' % (time.time() - all_data['T0']) )
-    log.joint(' max running time = %g\n' % all_data['max_time'] )
-    if all_data['ftol_counter']:
-      log.joint(' consecutive iterations with obj improvement less than ' + str(all_data['ftol']) + ' = ' + str(all_data['ftol_counter']) + '\n') 
-    log.joint(' ******************************************\n')
+    # Cuts' statistics
+    cutplane_cutstats(log,all_data)
     
     themodel.update()
 
-    log.joint('\n')
-    log.joint(' model updated with new cuts\n')
+    log.joint(' model updated\n')
     log.joint('\n')
 
-    ################## WRITE CUTS ##################
+    ############################### WRITE CUTS ################################
 
     if all_data['writecuts']:
       write_cuts(log,all_data)
 
-    ################## WRITE LPS ##################
+    ############################### WRITE LPS #################################
 
-    if all_data['writelps'] and all_data['round'] > 0:
-      name = 'post_cuts'+'_'+str(all_data['round'])+'.lp'
+    if all_data['writelps'] and ( all_data['round'] > 0 ):
+      name = 'post_cuts' + '_' + str(all_data['round']) + '.lp'
       themodel.write(name)
+      log.joint(' model with new cuts written to .lp file\n')
 
-    ################## SUMMARY EXPERIMENTS ##################
+    ########################## CHECK OBJ IMPROVEMENT ##########################
 
-    all_data['runtime'] = time.time() - all_data['T0']
-
-    log.joint(" writing casename, obj and runtime to summary_ws.log\n")
-
-    summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
-
-    summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' + str(newstatus) + ' obj ' + str(newobj) + ' runtime ' + str(all_data['runtime']) + ' iterations ' + str(all_data['round']) + '\n')
-
-    summary_ws.close()
-
-    ################## CHECK OBJ IMPROVEMENT ##################
-
-    if ((newobj - oldobj)/oldobj) < all_data['ftol']:
+    if ((all_data['objval'] - oldobj)/oldobj) < all_data['ftol']:
       all_data['ftol_counter'] += 1
     else:
       all_data['ftol_counter'] = 0
 
-    oldobj = newobj
+    oldobj              = all_data['objval']
     all_data['runtime'] = time.time() - all_data['T0']
 
 
     all_data['round'] += 1
     
 
-    #breakexit('iteration')
 
-    ###########################################################
+    ###########################################################################
+
 
 def fixflows(log,all_data):
 
@@ -1946,7 +1744,6 @@ def check13659(log,all_data):
   afile.close()
 
 
-
   all_data['mp_Pfvalues'] = mp_Pfvalues
   all_data['mp_Ptvalues'] = mp_Ptvalues
   all_data['mp_Qfvalues'] = mp_Qfvalues
@@ -1956,5 +1753,406 @@ def check13659(log,all_data):
   all_data['mp_angle']   = mp_angle
   all_data['mp_cvalues'] = mp_cvalues
   all_data['mp_svalues'] = mp_svalues
+
+
+def cutplane_stats(log,all_data):
+
+  themodel = all_data['themodel']
+  
+  log.joint('\n ******************** round statistics **********************\n') 
+    
+  log.joint(' casename = %s\n' % all_data['casename'] )
+  log.joint(' round = %g\n' % all_data['round'] )
+  log.joint(' objective = %g\n' % all_data['objval'])
+  log.joint(' solver status = ' + str(all_data['optstatus']) 
+            + ' solver method = ' + str(themodel.params.method) + '\n')
+  log.joint(' BarConTol = ' + str(themodel.params.BarConvTol) 
+            + ' FeasTol = ' + str(themodel.params.FeasibilityTol) 
+            + ' OptTol = ' + str(themodel.params.OptimalityTol) + '\n') 
+
+  #log.joint(' -- active power --\n')
+  #log.joint(' total active power generation = %g\n' % all_data['total_active_gen'] )
+  #log.joint(' active power losses = %g\n' % all_data['total_active_losses'] )
+
+  #log.joint(' -- reactive power --\n')
+  #log.joint(' total reactive power generation = %g\n' % all_data['total_reactive_gen'] )
+  #log.joint(' reactive power net losses = %g\n' % all_data['total_reactive_losses'] )
+  #log.joint(' reactive power gains = %g\n' % - all_data['total_reactive_gains'] )
+
+  if all_data['addcuts'] and all_data['round'] == 1:
+    log.joint(' -- precomputed cuts --\n')
+    log.joint(' Jabr-envelope cuts = %d\n' 
+               % all_data['addcuts_numjabrcuts'])
+    log.joint(' i2-envelope cuts = %d\n' 
+               % all_data['addcuts_numi2cuts'])
+    log.joint(' Limit-envelope cuts = %d\n' 
+               % all_data['addcuts_numlimitcuts'])
+  else:
+    log.joint(' -- cut parameters --\n')
+    log.joint(' cut age limit = ' 
+              + str(all_data['cut_age_limit']) + '\n')
+    log.joint(' parallel-cuts threshold = ' 
+              + str(all_data['threshold_dotprod']) + '\n')
+    log.joint(' initial threshold = ' 
+              + str(all_data['initial_threshold']) + '\n') #check what to do with this...
+    log.joint(' threshold = ' 
+              + str(all_data['tolerance']) + '\n') #check what to do with this...
+
+    if all_data['jabrcuts']:
+      log.joint(' -- Jabr-envelope cuts --\n')
+      log.joint(' cuts = %d\n' 
+                % all_data['num_jabr_cuts'])
+      log.joint(' top percent of most violated cuts added = %g\n' 
+                % (100*all_data['most_violated_fraction_jabr']) )
+      log.joint(' max error (abs) = %g\n' 
+                % all_data['max_error_jabr'])
+      log.joint(' cut threshold = %g\n' 
+                % all_data['threshold']) #check this, one threshold for all?
+
+    if all_data['i2cuts']:
+      log.joint(' -- i2-envelope cuts --\n')
+      log.joint(' cuts = %d\n' 
+                % all_data['num_i2_cuts'])
+      log.joint(' top percent of most violated cuts added = %g\n' 
+                % (100*all_data['most_violated_fraction_i2']))
+      log.joint(' max error (abs) = %g\n'
+                % all_data['max_error_i2'])
+      log.joint(' cut threshold = %g\n' 
+                % all_data['threshold_i2']) #check this as well
+
+    if all_data['limitcuts']:
+      log.joint(' -- Limit-envelope cuts --\n')
+      log.joint(' cuts = %d\n' 
+                % all_data['num_limit_cuts'])
+      log.joint(' top percent of most violated added = %g\n' 
+                % (100*all_data['most_violated_fraction_limit']))
+      log.joint(' max error (abs) = %g\n' 
+                % all_data['max_error_limit'])
+      log.joint(' cut threshold = %g\n' 
+                % all_data['threshold_limit'])
+
+    if all_data['loss_inequalities']:
+      log.joint(' -- loss inequalities --\n')
+      log.joint(' inequalities = %d\n'
+                % all_data['num_loss_cuts'])
+      log.joint(' top percent of most violated cuts added = %g\n'
+                % (100*all_data['most_violated_fraction_loss']))
+      log.joint(' max error (abs) = %g\n'
+                % all_data['max_error_loss'])
+
+  if all_data['linear_objective'] or all_data['hybrid']:
+    log.joint(' -- objective cuts --\n')
+    log.joint(' objective-cuts = %d\n'
+              % all_data['num_objective_cuts'])
+    log.joint(' threshold = %g\n'
+              % all_data['threshold_objcuts'])
+    
+  log.joint(' -- runtimes --\n')
+  log.joint(' solver runtime (current round) = %g\n'
+            % all_data['solvertime'])
+  log.joint(' cumulative solver time = %g\n' 
+            % all_data['cumulative_solver_time'])
+  
+  timenow = time.time()
+
+  log.joint(' time so far (overall - formulation time) = %g\n'
+            % (timenow - all_data['T0'] - all_data['formulation_time']))
+  log.joint(' time so far (overall) = %g\n'
+            % (timenow - all_data['T0']))
+  log.joint(' max runtime = %g\n'
+            % all_data['max_time'])
+  if all_data['ftol_counter']:
+    log.joint(' minimum obj improvement (ftol) = %g\n'
+              % all_data['ftol'])
+    log.joint(' consecutive rounds with obj improvement < ftol = %d\n' 
+              % all_data['ftol_counter'])
+
+  log.joint(' ************************************************************\n') 
+
+
+
+def cutplane_cutstats(log,all_data):
+
+  themodel = all_data['themodel']
+
+  log.joint('\n *********************** cuts statistics ********************\n') 
+  if all_data['jabrcuts']:
+    log.joint(' -- Jabr-envelope cuts --\n')
+    log.joint(' cuts = %d\n'
+              % all_data['num_jabr_cuts'])
+    if all_data['addcuts']:
+      log.joint('  precomputed cuts = %d\n' 
+              % all_data['addcuts_numjabrcuts'])
+    log.joint('  added in current round = %d\n' 
+              % all_data['num_jabr_cuts_added'])
+    if all_data['dropjabr']:
+      log.joint('  dropped in current round = %d\n' 
+                % all_data['num_jabr_cuts_dropped'])
+    log.joint(' added (overall) = %d\n'
+              % all_data['ID_jabr_cuts'])
+    if all_data['dropjabr']:
+      log.joint(' dropped (overall) = %d\n'
+                % all_data['total_jabr_dropped'])
+
+  if all_data['i2cuts']:
+    log.joint(' -- i2-envelope cuts --\n')
+    log.joint(' cuts = %d\n'
+              % all_data['num_i2_cuts'])
+    if all_data['addcuts']:
+      log.joint('  precomputed cuts = %d\n' 
+                % all_data['addcuts_numi2cuts'])
+    log.joint('  added in current round = %d\n' 
+              % all_data['num_i2_cuts_added'])
+    if all_data['dropi2']:
+      log.joint('  dropped in current round = %d\n'
+                % all_data['num_i2_cuts_dropped'] )
+  
+    log.joint(' added (overall) = %d\n'
+              % all_data['ID_i2_cuts'])
+
+    if all_data['dropi2']:
+      log.joint(' dropped (overall) = %d\n'
+                % all_data['total_i2_dropped'])
+
+  if all_data['limitcuts']:
+    log.joint(' -- Limit-envelope cuts --\n')
+    log.joint(' cuts = %d\n'
+              % all_data['num_limit_cuts'])
+    if all_data['addcuts']:
+      log.joint('  precomputed cuts = %d\n' 
+                % all_data['addcuts_numlimitcuts'])
+    log.joint('  added in current round = %d\n'
+              % all_data['num_limit_cuts_added'])
+    if all_data['droplimit']:
+      log.joint('  dropped in current round = %d\n'
+                % all_data['num_limit_cuts_dropped'] )
+    log.joint(' added (overall) = %d\n'
+               % all_data['ID_limit_cuts'])
+    if all_data['droplimit']:
+      log.joint(' dropped (overall) = %d\n'
+                % all_data['total_limit_dropped'])
+
+  if all_data['loss_inequalities']:
+    log.joint(' -- loss inequalities --\n')
+    log.joint(' Loss-inequalities = %d\n'
+              % all_data['num_loss_cuts'])
+    log.joint('  added in current round = %d\n'
+              % all_data['num_loss_cuts_added'])
+    if all_data['droploss']:
+      log.joint('  dropped in current round = %d\n'
+                % all_data['num_loss_cuts_dropped'])
+
+  if all_data['linear_objective'] or all_data['hybrid']:
+    log.joint(' -- objective cuts --\n')
+    log.joint(' objective-cuts = %g\n' % all_data['num_objective_cuts'])
+    log.joint(' objective-cuts threshold = %g\n' % all_data['threshold_objcuts'])    
+
+  log.joint(' ************************************************************\n\n') 
+
+
+def cutplane_cuts(log,all_data):
+
+  log.joint('\n starting cut procedure ...\n')
+
+  t0_cuts = time.time()
+
+  t0_jabr = time.time()
+
+  if all_data['jabrcuts']:
+    jabr_cuts(log,all_data)
+
+    if all_data['NO_jabrs_violated']:
+      if all_data['threshold'] > all_data['tolerance']:
+        all_data['threshold'] *= 1e-01
+        log.joint(' threshold updated to ' + str(all_data['threshold']) + '\n' )
+        #continue
+      # else:
+      #   log.joint(' threshold below ' + str(all_data['tolerance']) + ', we are done\n' )
+      #   if all_data['hybrid'] == 0:
+      #     log.joint(' writing to lpfile ' + all_data['lpfilename_cuts'] + '\n')  
+      #     themodel.write(all_data['lpfilename_cuts'])
+      #     log.joint(' total runtime = ' + str(time.time() - all_data['T0']) )
+      #     log.joint(' bye.\n')
+      #     return None
+
+  t1_jabr = time.time()
+
+  log.joint(' time spent on Jabr-cuts ' + str(t1_jabr - t0_jabr) + '\n')
+  #breakexit(' jabrs ')
+
+  t0_i2 = time.time()
+
+  if all_data['i2cuts']:
+    i2_cuts(log,all_data)
+
+    if all_data['NO_i2_cuts_violated']:
+      if all_data['threshold_i2'] > all_data['tolerance']:
+        all_data['threshold_i2'] *= 1e-01
+        log.joint(' threshold updated to ' + str(all_data['threshold_i2']) + '\n' )
+        #continue
+      # else:
+      #   log.joint(' threshold below ' + str(all_data['tolerance']) + ', we are done\n' )
+      #   if all_data['hybrid'] == 0:
+      #     log.joint(' writing to lpfile ' + all_data['lpfilename_cuts'] + '\n')  
+      #     themodel.write(all_data['lpfilename_cuts'])
+      #     log.joint(' total runtime = ' + str(time.time() - all_data['T0']) )
+      #     log.joint(' bye.\n')
+      #     return None
+
+  t1_i2 = time.time()
+  log.joint(' time spent on i2-cuts ' + str(t1_i2 - t0_i2) + '\n')
+
+
+  t0_lim = time.time()
+
+  if all_data['limitcuts']:
+    limit_cuts(log,all_data)
+    if all_data['NO_limit_cuts_violated']:
+      if all_data['threshold_limit'] > all_data['tolerance']:
+        all_data['threshold_limit'] *= 1e-01
+        log.joint(' threshold updated to ' + str(all_data['threshold_limit']) + '\n' )
+        #continue
+      else:
+        log.joint(' threshold below ' + str(all_data['tolerance']) + ', we continue\n' )
+
+  t1_lim = time.time()
+  log.joint(' time spent on lim-cuts ' + str(t1_lim - t0_lim) + '\n')
+
+
+  if all_data['losscuts']:
+    loss_cuts(log,all_data)
+    if all_data['NO_loss_violated']:
+      if all_data['threshold_limit'] > all_data['tolerance']:
+        all_data['threshold_limit'] *= 1e-01
+        log.joint(' threshold updated to ' + str(all_data['threshold_limit']) + '\n' )
+        #continue
+      else:
+        log.joint(' threshold below ' + str(all_data['tolerance']) + ', we continue\n' )
+
+
+  if all_data['linear_objective']:
+    if all_data['objective_cuts']:
+      objective_cuts(log,all_data)
+
+  t1_cuts = time.time()
+
+  log.joint('\n time spent on cuts ' + str(t1_cuts - t0_cuts) + '\n')
+
+  #breakexit('time adding cuts')
+
+
+def cutplane_cutmanagement(log,all_data):
+
+  t0_cutmanag = time.time()
+
+  if all_data['jabrcuts'] and all_data['dropjabr'] and (all_data['round'] >= all_data['cut_age_limit']):
+    drop_jabr(log,all_data)
+
+  if all_data['i2cuts'] and all_data['dropi2'] and (all_data['round'] >= all_data['cut_age_limit']):
+    drop_i2(log,all_data)
+
+  if all_data['limitcuts'] and all_data['droplimit'] and (all_data['round'] >= all_data['cut_age_limit']):
+    drop_limit(log,all_data)
+
+  if all_data['losscuts'] and all_data['droploss'] and (all_data['round'] >= all_data['cut_age_limit']):
+    drop_loss(log,all_data)
+
+  if all_data['loss_inequalities'] and all_data['droploss'] and (all_data['round'] >= all_data['cut_age_limit']):
+    drop_loss(log,all_data)
+
+  if all_data['cut_analysis']:
+    cut_analysis(log,all_data)
+
+  log.joint('\n')
+
+  t1_cutmanag = time.time()
+
+  #log.joint(' time spent on cut management ' + str(t1_cutmanag - t0_cutmanag) + '\n')
+
+
+def cutplane_optimize(log,all_data):
+
+  themodel = all_data['themodel']
+
+  log.joint(' solving model with method ' + str(themodel.params.method) + '\n')
+  
+  t0_solve = time.time()
+  themodel.optimize()
+  t1_solve = time.time()
+
+  if themodel.status == GRB.status.INF_OR_UNBD:
+    log.joint(' -> LP infeasible or unbounded\n')
+    log.joint(' turning presolve off and reoptimizing\n')
+    themodel.params.presolve = 0
+
+    t0_solve = time.time()
+    themodel.optimize()
+    t1_solve = time.time()
+
+    all_data['runtime'] = t1_solve - all_data['T0']
+
+    log.joint(' writing casename, opt status, and runtime to summary_ws.log\n')
+
+    summary_ws = open("summary_ws.log","a+") 
+    summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' 
+                     + str(themodel.status) + ' runtime ' 
+                     + str(all_data['runtime']) + ' iterations ' 
+                     + str(all_data['round']) + '\n')
+
+    summary_ws.close()
+
+    log.joint(' optimization status ' + str(themodel.status) + '\n')
+    log.joint(' solver runtime current round = %g\n' % (t1_solve - t0_solve) )
+    log.joint(' overall time = %g\n' % all_data['runtime'] )
+    log.joint(' bye.\n')
+    exit(0)
+
+  elif themodel.status == GRB.status.INFEASIBLE:
+    log.joint(' -> LP infeasible\n')
+
+    all_data['runtime'] = time.time() - all_data['T0']
+
+    log.joint(' writing casename, opt status, and runtime to summary_ws.log\n')
+
+    summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
+    summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' 
+                     + str(themodel.status) + ' runtime ' 
+                     + str(all_data['runtime']) + ' iterations ' 
+                     + str(all_data['round']) + '\n')
+
+    summary_ws.close()
+
+    log.joint(' solver runtime current round = %g\n' % (t1_solve - t0_solve) )
+    log.joint(' overall time = %g\n' % all_data['runtime'] )
+    log.joint(' bye.\n')
+    exit(0)
+
+    
+  elif ( themodel.status != GRB.status.OPTIMAL and 
+         themodel.status != GRB.status.SUBOPTIMAL ):
+
+    log.joint(' -> solver terminated with status ' + str(themodel.status) + '\n')
+
+    all_data['runtime'] = time.time() - all_data['T0']
+
+    log.joint(' writing casename, opt status and runtime to summary_ws.log\n')
+
+    summary_ws = open("summary_ws.log","a+") #later add feasibility errors, etc                            
+    summary_ws.write(' case ' + all_data['casename'] + ' opt_status ' 
+                     + str(themodel.status) + ' runtime ' 
+                     + str(all_data['runtime']) + ' iterations ' 
+                     + str(all_data['round']) + '\n')
+
+    summary_ws.close()
+
+    log.joint(' solver runtime current round = %g\n' % (t1_solve - t0_solve) )
+    log.joint(' overall time = %g\n' % all_data['runtime'] )
+    log.joint(' bye.\n')
+    exit(0)
+
+  all_data['objval']                  = themodel.ObjVal
+  all_data['optstatus']               = themodel.status
+  all_data['solvertime']              = t1_solve - t0_solve
+  all_data['cumulative_solver_time'] += (t1_solve - t0_solve)  
 
 

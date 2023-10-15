@@ -1,8 +1,14 @@
-###############################################################################                  
-# This code was written and is being maintained by Matias Villagra                               
-# License? Supervised by Dan? Part of the code comes from the kit (e.g. the                      
-# reader, etc...                                                                                 
-############################################################################### 
+###############################################################################
+#
+# This code was written and is being maintained by Matias Villagra,
+# PhD Student in Operations Research @ Columbia, supervised by 
+# Daniel Bienstock.
+#
+# Please report any bugs or issues (for sure there will be) to
+#                         mjv2153@columbia.edu
+#
+# Oct 2023
+###############################################################################
 
 
 from myutils import breakexit
@@ -59,7 +65,6 @@ def loss_cuts(log,all_data):
 
     log.joint('\n')
     log.joint(' **** Loss-cuts ****\n')
-    log.joint('\n')
 
     themodel     = all_data['themodel']
     IDtoCountmap = all_data['IDtoCountmap']
@@ -112,11 +117,15 @@ def loss_cuts(log,all_data):
         log.joint(' no more cuts to add for current threshold\n' )
         return None
     
-    log.joint(' adding loss inequalities ... \n')
+    log.joint('  number violated loss inequalities ' + str(violated_count) + '\n')
+
+    log.joint(' sorting most violated loss inequalities ... \n')
 
     num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction_loss'] )
     most_violated       = dict(sorted(violated.items(), key = lambda x: x[1], reverse = True)[:num_selected])
     most_violated_count = 0
+
+    log.joint(' adding loss inequalities ... \n')
 
     for branch in most_violated.keys():
 
@@ -134,10 +143,10 @@ def loss_cuts(log,all_data):
         Pt                   = Ptvalues[branch]
 
         if all_data['loud_cuts']:
-            log.joint(' --> new loss inequality\n')
-            log.joint(' branch ' + str(branchcount) + ' f ' + str(f) + ' t ' 
+            log.joint('  --> new loss inequality\n')
+            log.joint('  branch ' + str(branchcount) + ' f ' + str(f) + ' t ' 
                       + str(t) + ' violation ' + str(violation) + '\n')
-            log.joint(' values ' + ' Pf ' + str(Pf) + ' Pt ' + str(Pt) + '\n' )
+            log.joint('  values ' + ' Pf ' + str(Pf) + ' Pt ' + str(Pt) + '\n' )
 
         #sanity check
         if all_data['loss_validity']:
@@ -147,12 +156,12 @@ def loss_cuts(log,all_data):
             violation = - (sol_Pf + sol_Pt)
          
             if violation > FeasibilityTol:
-                log.joint(' WARNING, the loss inequality associated to branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + ' is violated by the AC solution!\n')
-                log.joint(' violation ' + str(violation) + '\n')
-                log.joint(' values (AC solution) ' + ' Pf ' + str(sol_Pf) + ' Pt ' + str(sol_Pt) + '\n')
+                log.joint('  WARNING, the loss inequality associated to branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + ' is violated by the AC solution!\n')
+                log.joint('  violation ' + str(violation) + '\n')
+                log.joint('  values (AC solution) ' + ' Pf ' + str(sol_Pf) + ' Pt ' + str(sol_Pt) + '\n')
                 breakexit('check!')
             else:
-                log.joint(' AC solution satisfies loss inequality at branch ' + str(branch.count) + ' with slack ' + str(violation) + '\n')
+                log.joint('  AC solution satisfies loss inequality at branch ' + str(branch.count) + ' with slack ' + str(violation) + '\n')
                  
         loss_cuts[branch] = (rnd,violation,threshold)        
         lossexp = LinExpr()
@@ -160,21 +169,27 @@ def loss_cuts(log,all_data):
         lossexp += Pvar_f[branch] + Pvar_t[branch]
         themodel.addConstr(lossexp >= 0, name = constrname)
         
-    log.joint('\n')
-    log.joint(' number violated loss-ineqs ' + str(violated_count) + ' number loss-ineq added ' + str(most_violated_count) + '\n')
-    log.joint(' max error ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
+    log.joint('  number loss-ineq added ' + str(most_violated_count) + '\n')
+    log.joint('  max error (abs) ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
 
     all_data['most_violated_branch_loss'] = most_violated_branch
     all_data['max_error_loss']            = max_error
     all_data['num_loss_cuts']            += most_violated_count
     all_data['num_loss_cuts_added']       = most_violated_count
 
+    if all_data['droploss'] and (all_data['round'] >= all_data['cut_age_limit']):
+        t0_drop = time.time()
+        drop_loss(log,all_data)
+        t1_drop = time.time()
+
+        log.joint('  time spent on drop loss ' + str(t1_drop - t0_drop) + '\n')
+
 
 def drop_loss(log,all_data):
     
-    log.joint('\n')
-    log.joint(' **** drop Loss cuts ****\n')
-    log.joint('\n')
+    #log.joint('\n')
+    #log.joint(' **** drop Loss cuts ****\n')
+    log.joint(' dropping old and slack loss inequalities ...\n')
 
     themodel      = all_data['themodel']
     branches      = all_data['branches']
@@ -207,8 +222,8 @@ def drop_loss(log,all_data):
             drop_loss.append(branch)
             themodel.remove(themodel.getConstrByName(constrname))
             if all_data['loud_cuts']:
-                log.joint(' --> removed loss-cut\n')
-                log.joint(' the cut ' + str(key)
+                log.joint('  --> removed loss-cut\n')
+                log.joint('  the cut ' + str(key)
                           + ' was removed from the model\n')
             
             
@@ -236,7 +251,6 @@ def i2_cuts(log,all_data):
         
     log.joint('\n')
     log.joint(' **** i2-cuts ****\n')
-    log.joint('\n')
 
     themodel       = all_data['themodel']
     IDtoCountmap   = all_data['IDtoCountmap']
@@ -256,13 +270,12 @@ def i2_cuts(log,all_data):
 
     rnd                      = all_data['round']
     i2_cuts                  = all_data['i2_cuts']
-    num_cuts                 = all_data['ID_i2_cuts']
-    num_i2_cuts_added        = 0
     i2_cuts_info             = all_data['i2_cuts_info']
-    i2_cuts_info_updated     = all_data['i2_cuts_info_updated']
+    num_cuts                 = all_data['ID_i2_cuts']
     threshold                = all_data['threshold_i2']
     violated                 = {}
     violated_count           = 0
+    num_i2_cuts_added        = 0
         
     all_data['NO_i2_cuts_violated'] = 0
     
@@ -279,7 +292,7 @@ def i2_cuts(log,all_data):
         #violation = max(violation_f,violation_t)
         if violation > threshold:
             if all_data['loud_cuts']:
-                log.joint(' violation ' + str(violation) + ' at branch ' 
+                log.joint('  violation ' + str(violation) + ' at branch ' 
                           + str(branch.count) + ' f ' + str(f) + ' t ' 
                           + str(t) + ' i2 value ' + str(i2fvalues[branch]) 
                           + '\n')
@@ -292,11 +305,15 @@ def i2_cuts(log,all_data):
         log.joint(' no more i2 cuts to add for current threshold\n' )
         return None
 
-    log.joint(' computing squared-current-envelope cuts ... \n')
+    log.joint('  number violated i2 ineqs ' + str(violated_count) + '\n')
+
+    log.joint(' sorting most violated i2-envelope cuts ...\n')
 
     num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction_i2'] )
     most_violated       = dict(sorted(violated.items(), key = lambda x: x[1], reverse = True)[:num_selected])
     most_violated_count = 0
+
+    log.joint(' computing i2-envelope cuts ... \n')
 
     for branch in most_violated.keys():
         if (most_violated_count == 0):
@@ -327,16 +344,16 @@ def i2_cuts(log,all_data):
         cutid                = num_cuts + most_violated_count
 
         if all_data['loud_cuts']:
-            log.joint(' --> new i2-cut\n')
-            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+            log.joint('  --> new i2-cut\n')
+            log.joint('  branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
                       + str(t) + ' violation ' + str(violation) + ' cut id ' 
                       + str((num_cuts + most_violated_count)) + '\n' )
-            log.joint(' values ' + ' Pft ' + str(Pft) + ' Qft ' + str(Qft) 
+            log.joint('  values ' + ' Pft ' + str(Pft) + ' Qft ' + str(Qft) 
                       + ' cff ' + str(cff) + ' i2ft ' + str(i2ft) + '\n' )
-            log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' 
+            log.joint('  LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' 
                       + str(coeff_Qft) + ' cff ' + str(coeff_cff) + ' i2ft ' 
                       + str(coeff_i2ft) + '\n' )
-            log.joint(' cutnorm ' + str(cutnorm) + '\n')
+            log.joint('  cutnorm ' + str(cutnorm) + '\n')
 
         #sanity check
         if all_data['i2_validity']:
@@ -348,21 +365,21 @@ def i2_cuts(log,all_data):
             sol_cbusf     = all_data['sol_cvalues'][buses[count_of_f]]
             sol_cbust     = all_data['sol_cvalues'][buses[count_of_t]]
             sol_i2f       = computei2value(log,all_data,branch,sol_c,sol_s,sol_cbusf,sol_cbust)
-            violation    = coeff_Pft * sol_Pf + coeff_Qft * sol_Qf + coeff_cff * sol_cbusf + coeff_i2ft * sol_i2f
-            relviolation = violation / ( ( coeff_Pft**2 + coeff_Qft**2 + coeff_cff**2 + coeff_i2ft**2 )**0.5 ) 
+            violation     = coeff_Pft * sol_Pf + coeff_Qft * sol_Qf + coeff_cff * sol_cbusf + coeff_i2ft * sol_i2f
+            relviolation  = violation / ( ( coeff_Pft**2 + coeff_Qft**2 + coeff_cff**2 + coeff_i2ft**2 )**0.5 ) 
 
             if relviolation > FeasibilityTol:
-                log.joint(' WARNING, the loss inequality associated to branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + ' is violated by the AC solution!\n')
-                log.joint(' violation ' + str(violation) + '\n')
-                log.joint(' relative violation ' + str(relviolation) + '\n')
-                log.joint(' values (AC solution) ' + ' Pft ' + str(sol_Pf) + ' Qft ' + str(sol_Qf) + ' cff ' + str(sol_cbusf) + ' i2ft ' + str(sol_i2f) + '\n' )
+                log.joint('  WARNING, the loss inequality associated to branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + ' is violated by the AC solution!\n')
+                log.joint('  violation ' + str(violation) + '\n')
+                log.joint('  relative violation ' + str(relviolation) + '\n')
+                log.joint('  values (AC solution) ' + ' Pft ' + str(sol_Pf) + ' Qft ' + str(sol_Qf) + ' cff ' + str(sol_cbusf) + ' i2ft ' + str(sol_i2f) + '\n' )
                 breakexit('check!')
             else:
-                log.joint(' AC solution satisfies loss inequality at branch ' + str(branch.count) + ' with slack ' + str(violation) + '\n')
+                log.joint('  AC solution satisfies loss inequality at branch ' + str(branch.count) + ' with slack ' + str(violation) + '\n')
         
-        i2_cuts[(cutid,branch.count)]       = (rnd,violation,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft,threshold)
-        i2_cuts_info[branch][cutid]         = (rnd,violation,coeff_Pft,coeff_Pft,coeff_cff,coeff_i2ft,threshold,cutid)
-        i2_cuts_info_updated[branch][cutid] = (rnd,violation,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft,threshold,cutid)
+        
+        i2_cuts[(cutid,branch.count)] = (rnd,threshold)
+        i2_cuts_info[branch][cutid]   = (rnd,violation,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft,threshold,cutid)
 
         
         cutexp     = LinExpr()
@@ -371,9 +388,8 @@ def i2_cuts(log,all_data):
 
         themodel.addConstr(cutexp <= 0, name = constrname)
 
-    log.joint('\n')
-    log.joint(' number violated i2 ineqs ' + str(violated_count) + ' number i2-envelope cuts added ' + str(most_violated_count) + '\n')
-    log.joint(' max error (i2) ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
+    log.joint('  number i2-envelope cuts added ' + str(most_violated_count) + '\n')
+    log.joint('  max error (abs) ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
 
 
     all_data['most_violated_branch_i2'] = most_violated_branch
@@ -383,11 +399,25 @@ def i2_cuts(log,all_data):
     all_data['num_i2_cuts']            += most_violated_count
     all_data['num_i2_cuts_rnd'][rnd]    = most_violated_count
 
+
+    if all_data['dropi2']:
+        if all_data['addcuts']:
+            t0_drop = time.time()
+            drop_i2(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop i2 ' + str(t1_drop - t0_drop) + '\n')
+        elif all_data['round'] >= all_data['cut_age_limit']: ######
+            t0_drop = time.time()
+            drop_i2(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop i2 ' + str(t1_drop - t0_drop) + '\n')
+
+
 def drop_i2(log,all_data):
     
-    log.joint('\n')
-    log.joint(' **** drop i2-envelope cuts ****\n')
-    log.joint('\n')
+    #log.joint('\n')
+    #log.joint(' **** drop i2-envelope cuts ****\n')
+    log.joint(' dropping old and slack i2-envelope cuts ...\n')
 
     themodel             = all_data['themodel']
     branches             = all_data['branches']
@@ -395,16 +425,18 @@ def drop_i2(log,all_data):
     IDtoCountmap         = all_data['IDtoCountmap']
     current_rnd          = all_data['round']
     cut_age_limit        = all_data['cut_age_limit']
-    i2_cuts_info_updated = all_data['i2_cuts_info_updated']
+    i2_cuts              = all_data['i2_cuts']
+    i2_cuts_info         = all_data['i2_cuts_info']
+    dropped_i2           = all_data['dropped_i2']
     drop_i2              = []
     num_i2_cuts_dropped  = all_data['num_i2_cuts_dropped'] 
 
-    for key in all_data['i2_cuts'].keys():
-        cut     = all_data['i2_cuts'][key] 
+    for key in i2_cuts.keys():  #key = (cutid,branch.count), value = (rnd,threshold)
+        cut     = i2_cuts[key] 
         cut_rnd = cut[0]
         cut_age = current_rnd - cut_rnd
 
-        if cut_age <= cut_age_limit:
+        if cut_age <= cut_age_limit: ###### fix
             continue #baby cuts, skip!
         
         cutid         = key[0]
@@ -414,7 +446,7 @@ def drop_i2(log,all_data):
         t             = branch.t
         count_of_f    = IDtoCountmap[f]
         count_of_t    = IDtoCountmap[t]
-        cut_threshold = cut[6]
+        cut_threshold = cut[1]
 
         constrname    = "i2_cut_"+str(cutid)+"_"+str(branchid)+"r_"+str(cut_rnd)+"_"+str(f)+"_"+str(t)
         constr        = themodel.getConstrByName(constrname)
@@ -424,38 +456,40 @@ def drop_i2(log,all_data):
             drop_i2.append(key)
             themodel.remove(themodel.getConstrByName(constrname))
             if all_data['loud_cuts']:
-                log.joint(' --> removed i2-cut\n')
-                log.joint(' the cut ' + str(key) 
+                log.joint('  --> removed i2-cut\n')
+                log.joint('  cut ' + str(key) + ' branch ' 
+                          + str(branchid) + ' f ' + str(f) + ' t ' + str(t) 
                           + ' was removed from the model\n')
     
     num_drop_i2       = len(drop_i2)
     
     if num_drop_i2:
         all_data['num_i2_cuts_dropped'] = num_drop_i2
-        all_data['num_i2_cuts'] -= num_drop_i2
+        all_data['num_i2_cuts']        -= num_drop_i2
+        all_data['total_i2_dropped']   += num_drop_i2
 
-        all_data['dropped_i2'].extend(drop_i2)
+        dropped_i2.extend(drop_i2)
+
         for key in drop_i2:
-            all_data['i2_cuts'].pop(key)
-        log.joint(' the cuts in drop_i2 list were removed from dict i2_cuts\n' )
+            i2_cuts.pop(key)
+        log.joint('  the cuts in drop_i2 list were removed from dict i2_cuts\n' )
 
-        ##### drop i2-envelope cuts from jabr_cuts_info_updated
+        ##### drop i2-envelope cuts from i2_cuts_info
         for key in drop_i2:
             cutid = key[0]
             branchid = key[1]
-            cuts_branch = i2_cuts_info_updated[branches[branchid]]
+            cuts_branch = i2_cuts_info[branches[branchid]]
             cuts_branch.pop(cutid)
-        log.joint(' cuts in drop_i2 list were removed from i2_cuts_info_updated\n') 
+        log.joint('  cuts in drop_i2 list were removed from i2_cuts_info\n') 
     else:
         all_data['num_i2_cuts_dropped'] = 0
-        log.joint(' no i2-envelope cuts were dropped this round\n')
+        log.joint('  no i2-envelope cuts were dropped this round\n')
     
 
 def limit_cuts(log,all_data):
         
     log.joint('\n')
     log.joint(' **** Limit-cuts ****\n')  #should we add f->t and t->f? if r small, |Pf| = |Pt| for sure, but Qf and Qt might differ 
-    log.joint('\n')
 
     themodel         = all_data['themodel']
     IDtoCountmap     = all_data['IDtoCountmap']
@@ -473,16 +507,13 @@ def limit_cuts(log,all_data):
     Qtvalues = all_data['Qtvalues']
     
     rnd                   = all_data['round']
-    limit_cuts            = all_data['limit_cuts']
+    limit_cuts            = all_data['limit_cuts']    
+    limit_cuts_info       = all_data['limit_cuts_info']
     num_cuts              = all_data['ID_limit_cuts']
     num_limit_cuts_added  = 0
     threshold             = all_data['threshold']
     violated              = {}
     violated_count        = 0
-
-    #limit-analysis
-    limit_cuts_info         = all_data['limit_cuts_info']
-    limit_cuts_info_updated = all_data['limit_cuts_info_updated']
     
     all_data['NO_limit_cuts_violated'] = 0
     
@@ -500,7 +531,7 @@ def limit_cuts(log,all_data):
             violated_count += 1
             violated[branch] = (violation_t,'t')
         if f_and_t == 2:
-            log.joint(' -from and to- limit inequalities violated at branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + '\n')  
+            log.joint('  -from and to- limit inequalities violated at branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + '\n')  
             breakexit('f and t violated')
         f_and_t = 0
 
@@ -510,12 +541,15 @@ def limit_cuts(log,all_data):
         log.joint(' no more limit-cuts to add for current threshold\n' )
         return None
     
-    log.joint(' computing limit-envelope cuts ... \n')
+    log.joint('  number violated limits ' + str(violated_count) + '\n')
+
+    log.joint(' sorting most violated limit-envelope cuts ...\n')
 
     num_selected        =  math.ceil(violated_count * all_data['most_violated_fraction_limit'] )
     most_violated       = dict(sorted(violated.items(), key = lambda x: x[1][0], reverse = True)[:num_selected])
     most_violated_count = 0
 
+    log.joint(' computing limit-envelope cuts ... \n')
 
     for branch in most_violated.keys():
         if (most_violated_count == 0):
@@ -549,7 +583,7 @@ def limit_cuts(log,all_data):
         u2         = u**2
 
         if violation + u2 < 1e-05:
-            log.joint(' check branch\n') #case were U ~ 0 and P,Q > 0 (small)  if viol > threshold, this shouldnt happen (given threshold >= 1e-5)
+            log.joint('  check branch\n') #case were U ~ 0 and P,Q > 0 (small)  if viol > threshold, this shouldnt happen (given threshold >= 1e-5)
             breakexit('check')  
 
         #t0_sqred  = u**2 / ( violation + u**2 )
@@ -574,19 +608,19 @@ def limit_cuts(log,all_data):
         cutid                = num_cuts + most_violated_count
 
         if all_data['loud_cuts']:
-            log.joint(' --> new cut\n')
-            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+            log.joint('  --> new cut\n')
+            log.joint('  branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
                       + str(t) + ' violation ' + str(violation) + ' cut id ' 
                       + str(cutid) + '\n')
             if from_or_to == 'f':
-                log.joint(' values ' + ' Pft ' + str(Pval) + ' Qft ' 
+                log.joint('  values ' + ' Pft ' + str(Pval) + ' Qft ' 
                           + str(Qval) + '\n')
-                log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) + ' Qft ' 
+                log.joint('  LHS coeff ' + ' Pft ' + str(coeff_P) + ' Qft ' 
                           + str(coeff_Q) + ' RHS ' + str(z) + '\n')
             elif from_or_to == 't':
-                log.joint(' values ' + ' Ptf ' + str(Pval) + ' Qtf ' 
+                log.joint('  values ' + ' Ptf ' + str(Pval) + ' Qtf ' 
                           + str(Qval) + '\n')
-                log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) + ' Qtf ' 
+                log.joint('  LHS coeff ' + ' Ptf ' + str(coeff_P) + ' Qtf ' 
                           + str(coeff_Q) + ' RHS ' + str(z) + '\n')
         
         #sanity check
@@ -602,18 +636,16 @@ def limit_cuts(log,all_data):
             slack    = coeff_P * sol_Pval + coeff_Q * sol_Qval - z
 
             if slack > FeasibilityTol:
-                log.joint(' this cut is not valid!\n')
-                log.joint(' violation ' + str(slack) + '\n')
-                log.joint(' values (a primal bound)' + ' P ' + str(sol_Pval) + ' Q ' + str(sol_Qval) + ' branch limit ' + str(u) + '\n')
+                log.joint('  this cut is not valid!\n')
+                log.joint('  violation ' + str(slack) + '\n')
+                log.joint('  values (a primal bound)' + ' P ' + str(sol_Pval) 
+                          + ' Q ' + str(sol_Qval) + ' branch limit ' + str(u) + '\n')
                 breakexit('check!')
             else:
-                log.joint(' valid cut at branch ' + str(branch.count) + ' with slack ' + str(slack) + '\n')
+                log.joint('  valid cut at branch ' + str(branch.count) + ' with slack ' + str(slack) + '\n')
         
-        limit_cuts[(cutid,branch.count)]       = (rnd,violation,coeff_P,coeff_Q,threshold,from_or_to)
-
-        limit_cuts_info[branch][cutid]         = (rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
-
-        limit_cuts_info_updated[branch][cutid] = (rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
+        limit_cuts[(cutid,branch.count)] = (rnd,threshold,from_or_to)
+        limit_cuts_info[branch][cutid]   = (rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
         
         cutexp = LinExpr()
 
@@ -624,14 +656,13 @@ def limit_cuts(log,all_data):
             constrname = "limit_cut_" + str(cutid) + "_" + str(branch.count) + "r_" + str(rnd) + "_" + str(t) + "_" + str(f)
             cutexp += coeff_P * Pvar_t[branch] + coeff_Q * Qvar_t[branch]
         else:
-            log.joint(' we have a bug\n')
+            log.joint('  we have a bug\n')
             breakexit('look for bug')
             
         themodel.addConstr(cutexp <= z, name = constrname)
 
-    log.joint('\n')
-    log.joint(' number violated limits ' + str(violated_count) + ' number limit-envelope cuts added ' + str(most_violated_count) + '\n')
-    log.joint(' max error ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
+    log.joint('  number limit-envelope cuts added ' + str(most_violated_count) + '\n')
+    log.joint('  max error (abs) ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
 
     all_data['most_violated_branch_limit']   = most_violated_branch
     all_data['max_error_limit']              = max_error
@@ -641,11 +672,24 @@ def limit_cuts(log,all_data):
     all_data['num_limit_cuts_rnd'][rnd]      = most_violated_count
 
 
+    if all_data['droplimit']:
+        if all_data['addcuts']:
+            t0_drop = time.time()
+            drop_limit(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop limit ' + str(t1_drop - t0_drop) + '\n')
+        elif all_data['round'] >= all_data['cut_age_limit']: ######
+            t0_drop = time.time()
+            drop_limit(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop limit ' + str(t1_drop - t0_drop) + '\n')
+
+
 def drop_limit(log,all_data):
     
-    log.joint('\n')
-    log.joint(' **** drop Limit-envelope cuts ****\n')
-    log.joint('\n')
+    #log.joint('\n')
+    #log.joint(' **** drop Limit-envelope cuts ****\n')
+    log.joint(' dropping old and slack limit-envelope cuts ...\n')
 
     themodel                = all_data['themodel']
     branches                = all_data['branches']
@@ -653,17 +697,19 @@ def drop_limit(log,all_data):
     IDtoCountmap            = all_data['IDtoCountmap']
     current_rnd             = all_data['round']
     cut_age_limit           = all_data['cut_age_limit']
-    limit_cuts_info_updated = all_data['limit_cuts_info_updated']
+    limit_cuts              = all_data['limit_cuts']
+    limit_cuts_info         = all_data['limit_cuts_info']
     drop_limit              = []
+    dropped_limit           = all_data['dropped_limit']
     num_limit_cuts_dropped  = all_data['num_limit_cuts_dropped'] 
 
-    for key in all_data['limit_cuts'].keys():
-        cut     = all_data['limit_cuts'][key] 
+    for key in limit_cuts.keys():
+        cut     = limit_cuts[key]   #        limit_cuts[(cutid,branch.count)] = (rnd,threshold,from_or_to)
         cut_rnd = cut[0]
         cut_age = current_rnd - cut_rnd
 
-        if cut_age <= cut_age_limit:
-            continue #baby cuts, skip!        (rnd,violation,coeff_P,coeff_Q,threshold,from_or_to)
+        if cut_age <= cut_age_limit: ###fix this ws
+            continue #baby cuts, skip!
         
         cutid         = key[0]
         branchid      = key[1]
@@ -672,8 +718,8 @@ def drop_limit(log,all_data):
         t             = branch.t
         count_of_f    = IDtoCountmap[f]
         count_of_t    = IDtoCountmap[t]
-        cut_threshold = cut[4]
-        from_or_to    = cut[5]
+        cut_threshold = cut[1]
+        from_or_to    = cut[2]
 
         if from_or_to == 'f':
             constrname = "limit_cut_" + str(cutid) + "_" + str(branch.count) + "r_" + str(cut_rnd) + "_" + str(f) + "_" + str(t)
@@ -694,33 +740,35 @@ def drop_limit(log,all_data):
                 log.joint(' the cut ' + str(key)
                           + ' was removed from the model\n')
     
-    num_drop_limit       = len(drop_limit)
+    num_drop_limit = len(drop_limit)
     if num_drop_limit:
         all_data['num_limit_cuts_dropped'] = num_drop_limit
-        all_data['num_limit_cuts'] -= num_drop_limit
+        all_data['num_limit_cuts']        -= num_drop_limit
+        all_data['total_limit_dropped']   += num_drop_limit
 
-        all_data['dropped_limit'].extend(drop_limit)
-        for key in drop_limit:
-            all_data['limit_cuts'].pop(key)
-        log.joint(' the cuts in drop_limit list were removed from dict limit_cuts\n' )
+        dropped_limit.extend(drop_limit)
 
-        ##### drop limit-envelope cuts from limit_cuts_info_updated
         for key in drop_limit:
-            cutid = key[0]
+            limit_cuts.pop(key)
+
+        log.joint('  the cuts in drop_limit list were removed from dict limit_cuts\n' )
+
+        ##### drop limit-envelope cuts from limit_cuts_info
+        for key in drop_limit:
+            cutid    = key[0]
             branchid = key[1]
-            cuts_branch = limit_cuts_info_updated[branches[branchid]]
+            cuts_branch = limit_cuts_info[branches[branchid]]
             cuts_branch.pop(cutid)
-        log.joint(' cuts in drop_limit list were removed from limit_cuts_info_updated\n') 
+        log.joint('  cuts in drop_limit list were removed from limit_cuts_info\n') 
     else:
         all_data['num_limit_cuts_dropped'] = 0
-        log.joint(' no limit-envelope cuts were dropped this round\n')
+        log.joint('  no limit-envelope cuts were dropped this round\n')
 
 
 def jabr_cuts(log,all_data):
         
     log.joint('\n')
     log.joint(' **** Jabr-cuts ****\n')
-    log.joint('\n')
 
     themodel       = all_data['themodel']
     IDtoCountmap   = all_data['IDtoCountmap']
@@ -729,27 +777,25 @@ def jabr_cuts(log,all_data):
     cvar           = all_data['cvar']
     svar           = all_data['svar']
     FeasibilityTol = all_data['FeasibilityTol']
-    
-    cvalues = all_data['cvalues']
-    svalues = all_data['svalues']
+    cvalues        = all_data['cvalues']
+    svalues        = all_data['svalues']
     
     rnd                 = all_data['round']
     jabr_cuts           = all_data['jabr_cuts']
+    jabr_cuts_info      = all_data['jabr_cuts_info']
     num_cuts            = all_data['ID_jabr_cuts']
     num_jabr_cuts_added = 0
     threshold           = all_data['threshold']
     violated            = {}
     violated_count      = 0
 
-    #jabr-analysis
-    jabr_cuts_info         = all_data['jabr_cuts_info']
-    jabr_cuts_info_updated = all_data['jabr_cuts_info_updated']
     
     all_data['NO_jabrs_violated'] = 0
     
     t0_violation = time.time()
 
     log.joint(' checking for violations of Jabr inequalities ... \n')
+
     for branch in branches.values():
         f = branch.f
         t = branch.t
@@ -766,12 +812,38 @@ def jabr_cuts(log,all_data):
         log.joint(' no more cuts to add for current threshold\n' )
         return None
 
-
     t1_violation = time.time()
 
-    log.joint(' time spent on violation Jabrs ' + str(t1_violation - t0_violation) + '\n')
+    log.joint('  number violated Jabrs ' + str(violated_count) + '\n')  
+    log.joint('  time spent on violation Jabrs ' + str(t1_violation - t0_violation) + '\n')
 
-    log.joint(' computing Jabr-envelope cuts ... \n')
+    ###################
+
+    # t0_violation = time.time()
+
+    # log.joint(' checking for violations of i2 inequalities ... \n')
+    # log.joint(' method 2\n')
+    
+    # cvalues_array   = all_data['cvalues_array']  
+    # svalues_array   = all_data['svalues_array']  
+    # cfvalues_array  = all_data['cfvalues_array']
+    # ctvalues_array  = all_data['ctvalues_array']
+
+    # violations = cvalues_array * cvalues_array + svalues_array * svalues_array - cfvalues_array * ctvalues_array
+
+    # violation  = np.where(violations > threshold,violations,0)
+    
+    # violated_count = np.count_nonzero(violation)
+
+    # t1_violation = time.time() 
+
+    # log.joint('  number violated Jabrs ' + str(violated_count) + '\n')  
+    # log.joint('  time spent on violation Jabrs ' + str(t1_violation - t0_violation) + '\n')
+    # log.joint('  ----------\n')
+
+    ####################
+
+    log.joint(' sorting most violated Jabr-envelope cuts ... \n')
 
     t0_mostviol = time.time()
 
@@ -781,14 +853,42 @@ def jabr_cuts(log,all_data):
 
     t1_mostviol = time.time()
 
-    log.joint(' time spent on most viol Jabrs ' + str(t1_mostviol - t0_mostviol) + '\n')
+    log.joint('  time spent on sorting most violated Jabrs ' + str(t1_mostviol - t0_mostviol) + '\n')
 
+    ####################
+
+    # log.joint(' sorting most violated Jabr-envelope cuts ... \n')
+    # log.joint('  method 2\n')
+
+    # t0_mostviol = time.time()
+
+    # num_selected  =  math.ceil(violated_count * all_data['most_violated_fraction_jabr'] )
+    # most_violated = violation.argsort()[::-1][:num_selected]
+    # most_violated_count = 0
+
+    # all_data['most_violated_branch_jabr'] = most_violated_branch = most_violated[0]
+    # all_data['max_error_jabr']            = max_error = violation[most_violated[0]]
+
+    # t1_mostviol = time.time()
+
+    # log.joint('  time spent on sorting most violated Jabrs ' + str(t1_mostviol - t0_mostviol) + '\n')
+    # log.joint('  ----------\n')
+
+    ###################    
+
+    log.joint(' computing Jabr-envelope cuts ... \n')
     t0_compute  = time.time()
 
     for branch in most_violated.keys():
         if (most_violated_count == 0):
             most_violated_branch = branch.count
             max_error = most_violated[branch]
+
+    # for count in range(len(most_violated)):
+
+    #     index       = most_violated[count]
+    #     branchcount = all_data['IDtoBranchcount'][index]
+    #     branch      = branches[branchcount]
 
         f          = branch.f
         t          = branch.t
@@ -812,19 +912,21 @@ def jabr_cuts(log,all_data):
         #we add the cut
         most_violated_count += 1
         violation            = most_violated[branch]
+        #violation            = violations[index] # numpy
+
         cutid                = num_cuts + most_violated_count
 
         if all_data['loud_cuts']:
-            log.joint(' --> new cut\n')
-            log.joint(' branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
+            log.joint('  --> new cut\n')
+            log.joint('  branch ' + str(branch.count) + ' f ' + str(f) + ' t ' 
                       + str(t) + ' violation ' + str(violation) + ' cut id ' 
                       + str(cutid) + '\n' )
-            log.joint(' values ' + ' cft ' + str(cft) + ' sft ' + str(sft) 
+            log.joint('  values ' + ' cft ' + str(cft) + ' sft ' + str(sft) 
                       + ' cff ' + str(cff) + ' ctt ' + str(ctt) + '\n' )
-            log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' 
+            log.joint('  LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' 
                       + str(coeff_sft) + ' cff ' + str(coeff_cff) + ' ctt ' 
                       + str(coeff_ctt) + '\n' )
-            log.joint(' cutnorm ' + str(cutnorm) + '\n')
+            log.joint('  cutnorm ' + str(cutnorm) + '\n')
 
         #sanity check
         if all_data['jabr_validity']:
@@ -836,16 +938,17 @@ def jabr_cuts(log,all_data):
             slack     = coeff_cft * sol_c + coeff_sft * sol_s + coeff_cff * sol_cbusf + coeff_ctt * sol_cbust
 
             if slack > FeasibilityTol:
-                log.joint(' this cut is not valid!\n')
-                log.joint(' violation ' + str(slack) + '\n')
-                log.joint(' values (a primal bound)' + ' cft ' + str(sol_c) + ' sft ' + str(sol_s) + ' cff ' + str(sol_busf) + ' ctt ' + str(sol_cbust) + '\n' )
+                log.joint('  this cut is not valid!\n')
+                log.joint('  violation ' + str(slack) + '\n')
+                log.joint('  values (a primal bound)' + ' cft ' + str(sol_c) 
+                          + ' sft ' + str(sol_s) + ' cff ' + str(sol_busf) 
+                          + ' ctt ' + str(sol_cbust) + '\n' )
                 breakexit('check!')
             else:
-                log.joint(' valid cut at branch ' + str(branch.count) + ' with slack ' + str(slack) + '\n')
+                log.joint('  valid cut at branch ' + str(branch.count) + ' with slack ' + str(slack) + '\n')
         
-        jabr_cuts[(cutid,branch.count)]       = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold)
-        jabr_cuts_info[branch][cutid]         = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)
-        jabr_cuts_info_updated[branch][cutid] = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)
+        jabr_cuts[(cutid,branch.count)] = (rnd,threshold)
+        jabr_cuts_info[branch][cutid]   = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)
         
         cutexp = LinExpr()
         constrname = "jabr_cut_"+str(cutid)+"_"+str(branch.count)+"r_"+str(rnd)+"_"+str(f)+"_"+str(t)
@@ -853,14 +956,12 @@ def jabr_cuts(log,all_data):
 
         themodel.addConstr(cutexp <= 0, name = constrname)
 
-    log.joint('\n')
-    log.joint(' number violated Jabrs ' + str(violated_count) + ' number Jabr-envelope cuts added ' + str(most_violated_count) + '\n')
-    log.joint(' max error ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
+    log.joint('  number Jabr-envelope cuts added ' + str(most_violated_count) + '\n')
+    log.joint('  max error (abs) ' + str(max_error) + ' at branch ' + str(most_violated_branch) + '\n' )
 
     t1_compute = time.time()
 
-    log.joint(' time spent on computing Jabrs ' + str(t1_compute - t0_compute) + '\n')
-
+    log.joint('  time spent on computing Jabrs ' + str(t1_compute - t0_compute) + '\n')
 
     all_data['most_violated_branch_jabr'] = most_violated_branch
     all_data['max_error_jabr']            = max_error
@@ -869,11 +970,23 @@ def jabr_cuts(log,all_data):
     all_data['num_jabr_cuts']            += most_violated_count
     all_data['num_jabr_cuts_rnd'][rnd]    = most_violated_count
 
+    if all_data['dropjabr']:
+        if all_data['addcuts']:
+            t0_drop = time.time()
+            drop_jabr(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop Jabrs ' + str(t1_drop - t0_drop) + '\n')
+        elif all_data['round'] >= all_data['cut_age_limit']: ######
+            t0_drop = time.time()
+            drop_jabr(log,all_data)
+            t1_drop = time.time()
+            log.joint('  time spent on drop Jabrs ' + str(t1_drop - t0_drop) + '\n')
+
 def drop_jabr(log,all_data):
     
-    log.joint('\n')
-    log.joint(' **** drop Jabr-envelope cuts ****\n')
-    log.joint('\n')
+    #log.joint('\n')
+    #log.joint(' **** drop Jabr-envelope cuts ****\n')
+    log.joint(' dropping old and slack Jabr-envelope cuts ...\n')
 
     themodel               = all_data['themodel']
     branches               = all_data['branches']
@@ -881,16 +994,18 @@ def drop_jabr(log,all_data):
     IDtoCountmap           = all_data['IDtoCountmap']
     current_rnd            = all_data['round']
     cut_age_limit          = all_data['cut_age_limit']
-    jabr_cuts_info_updated = all_data['jabr_cuts_info_updated']
+    jabr_cuts              = all_data['jabr_cuts']
+    jabr_cuts_info         = all_data['jabr_cuts_info']
     drop_jabrs             = []
     num_jabr_cuts_dropped  = all_data['num_jabr_cuts_dropped'] 
+    dropped_jabrs          = all_data['dropped_jabrs']
 
-    for key in all_data['jabr_cuts'].keys():
-        cut = all_data['jabr_cuts'][key] 
+    for key in jabr_cuts.keys():
+        cut     = jabr_cuts[key] 
         cut_rnd = cut[0]
-        cut_age = current_rnd - cut_rnd
+        cut_age = current_rnd - cut_rnd 
 
-        if cut_age <= cut_age_limit:
+        if cut_age <= cut_age_limit: #fix this... we are not cleaning up precomputed cuts...
             continue #baby cuts, skip! 
 
         cutid         = key[0]
@@ -900,7 +1015,7 @@ def drop_jabr(log,all_data):
         t             = branch.t
         count_of_f    = IDtoCountmap[f]
         count_of_t    = IDtoCountmap[t]
-        cut_threshold = cut[6]
+        cut_threshold = cut[1]
         
         constrname    = "jabr_cut_"+str(cutid)+"_"+str(branchid)+"r_"+str(cut_rnd)+"_"+str(f)+"_"+str(t)
         constr        = themodel.getConstrByName(constrname)
@@ -910,37 +1025,42 @@ def drop_jabr(log,all_data):
             drop_jabrs.append(key)
             themodel.remove(themodel.getConstrByName(constrname))
             if all_data['loud_cuts']:
-                log.joint(' --> removed Jabr-cut\n')
-                log.joint(' the cut ' + str(key)
+                log.joint('  --> removed Jabr-cut\n')
+                log.joint('  the cut ' + str(key)
                           + ' was removed from the model\n')
     
     num_drop_jabrs = len(drop_jabrs)
 
     if num_drop_jabrs:
         all_data['num_jabr_cuts_dropped'] = num_drop_jabrs
-        all_data['num_jabr_cuts'] -= num_drop_jabrs
+        all_data['num_jabr_cuts']        -= num_drop_jabrs
+        all_data['total_jabr_dropped']   += num_drop_jabrs
 
-        all_data['dropped_jabrs'].extend(drop_jabrs)
-        for key in drop_jabrs:
-            all_data['jabr_cuts'].pop(key)
-        log.joint(' the cuts in drop_jabrs list were removed from dict jabr_cuts\n')
+        dropped_jabrs.extend(drop_jabrs)
 
-        ##### drop Jabr-envelope cuts from jabr_cuts_info_updated
         for key in drop_jabrs:
-            cutid = key[0]
+            jabr_cuts.pop(key)
+
+        log.joint('  the cuts in drop_jabrs list were removed from dict jabr_cuts\n')
+
+        ##### drop Jabr-envelope cuts from jabr_cuts_info
+        for key in drop_jabrs:
+            cutid    = key[0]
             branchid = key[1]
-            cuts_branch = jabr_cuts_info_updated[branches[branchid]]
+            cuts_branch = jabr_cuts_info[branches[branchid]]
             cuts_branch.pop(cutid)
-        log.joint(' cuts in drop_jabrs list were removed from jabr_cuts_info_updated\n') 
+        log.joint('  cuts in drop_jabrs list were removed from jabr_cuts_info\n') 
     else:
         all_data['num_jabr_cuts_dropped'] = 0
-        log.joint(' no Jabr-envelope cuts were dropped this round\n')
+        log.joint('  no Jabr-envelope cuts were dropped this round\n')
+
 
 def add_cuts(log,all_data):
 
     if '_b' in all_data['casename']:
         original_casename = all_data['casename'][:len(all_data['casename']) - 2]
-    elif '_n_5_5' in all_data['casename'] or '_n_0_5' in all_data['casename']:
+    elif ('_n_5_5' in all_data['casename'] or '_n_0_5' in all_data['casename'] 
+          or '_n_1_1' in all_data['casename']):
         original_casename = all_data['casename'][:len(all_data['casename']) - 6]
     elif '_line' in all_data['casename']:
         original_casename = all_data['casename'][:len(all_data['casename']) - 5]
@@ -949,9 +1069,8 @@ def add_cuts(log,all_data):
     else:
         original_casename = all_data['casename']
 
-    filename = 'newcuts/cuts_' + original_casename + '.txt' ###cuts | newcuts
+    filename = 'newcuts4/cuts_' + original_casename + '.txt' ###cuts | newcuts
     log.joint(" opening file with cuts " + filename + "\n")
-
 
     try:
         thefile = open(filename, "r") 
@@ -968,20 +1087,20 @@ def add_cuts(log,all_data):
     log.joint(' loading cuts from round ' + str(theround) + '\n')
 
     if firstline[0] == '#Jabr-envelope':
-        numjabrcuts = firstline[3]
+        numjabrcuts = int(firstline[3])
         all_data['addcuts_numjabrcuts'] = numjabrcuts
         log.joint(' number of Jabr-envelope cuts = ' + str(numjabrcuts) + '\n')
     elif firstline[0] == '#i2-envelope':
         jabr      = 0
         i2        = 1
-        numi2cuts = firstline[3]
+        numi2cuts = int(firstline[3])
         all_data['addcuts_numi2cuts'] = numi2cuts
         log.joint(' no Jabr-envelope cuts to add\n')
         log.joint(' number of i2-envelope cuts = ' + str(numi2cuts) + '\n')
     elif firstline[0] == '#limit-envelope':
         jabr         = 0
         i2           = 0
-        numlimitcuts = firstline[3]
+        numlimitcuts = int(firstline[3])
         all_data['addcuts_numlimitcuts'] = numlimitcuts
         log.joint(' no Jabr nor i2-envelope cuts to add\n')
         log.joint(' number of limit-envelope cuts = ' + str(numlimitcuts) + '\n')
@@ -1005,14 +1124,6 @@ def add_cuts(log,all_data):
 
     if all_data['i2']:
         i2var_f = all_data['i2var_f']
-    
-        
-    # if jabr:
-    #     log.joint(' adding Jabr-envelope cuts ...\n')
-    # elif i2:
-    #     log.joint(' adding i2-envelope cuts ...\n')
-    # else:
-    #     log.joint(' adding limit-envelope cuts ...\n')
 
     while linenum < numlines: 
         thisline = lines[linenum].split()
@@ -1026,9 +1137,10 @@ def add_cuts(log,all_data):
             continue
 
         elif thisline[0] == '#limit-envelope' and i2:
-            numlimcuts = int(thisline[3])
-            all_data['addcuts_numlimitcuts'] = numlimcuts
-            log.joint(' number of limit-envelope cuts = ' + str(numlimcuts) + '\n')
+            numlimitcuts = int(thisline[3])
+            all_data['addcuts_numlimitcuts'] = numlimitcuts
+            log.joint(' number of limit-envelope cuts = ' + str(numlimitcuts) 
+                      + '\n')
             linenum += 1
             i2       = 0
             continue
@@ -1046,7 +1158,9 @@ def add_cuts(log,all_data):
 
 
             if branchid not in branches.keys(): # perturbed lines
-                log.joint(' we do not add this cut since branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + ' was turned OFF\n')
+                log.joint(' we do not add this cut since branch ' 
+                          + str(branchid) + ' f ' + str(f) + ' t ' + str(t) 
+                          + ' was turned OFF\n')
                 linenum += 1
                 continue
 
@@ -1054,8 +1168,13 @@ def add_cuts(log,all_data):
             count_of_f = IDtoCountmap[f] 
             count_of_t = IDtoCountmap[t]
 
-            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
-                log.joint(' branchid ' + str(branchid) + ' branch.count ' + str(branch.count) + ' f ' + str(f) + ' branch.f ' + str(branch.f) + ' t ' + str(t) + ' branch.t ' + str(branch.t) + '\n')
+            if ( (branchid != branch.count) or f != (branch.f) 
+                 or (t != branch.t) ):
+
+                log.joint(' branchid ' + str(branchid) + ' branch.count ' 
+                          + str(branch.count) + ' f ' + str(f) + ' branch.f ' 
+                          + str(branch.f) + ' t ' + str(t) + ' branch.t ' 
+                          + str(branch.t) + '\n')
                 breakexit('bug')
 
             if all_data['loud_cuts']:
@@ -1092,7 +1211,7 @@ def add_cuts(log,all_data):
             linenum += 1
 
         elif (jabr == 0) and i2:
-            #log.joint(' here we have the bug, printing thisline[1] ' + thisline[1] + '\n')
+
             branchid   = int(thisline[1])
             f          = int(thisline[3])
             t          = int(thisline[5])
@@ -1103,7 +1222,9 @@ def add_cuts(log,all_data):
             coeff_i2ft = float(thisline[21])
 
             if branchid not in branches.keys(): # perturbed lines
-                log.joint(' we do not add this cut since branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + 'was turned OFF\n')
+                log.joint(' we do not add this cut since branch ' 
+                          + str(branchid) + ' f ' + str(f) + ' t ' + str(t) 
+                          + 'was turned OFF\n')
                 linenum += 1
                 continue
 
@@ -1111,7 +1232,8 @@ def add_cuts(log,all_data):
             count_of_f = IDtoCountmap[f] 
             count_of_t = IDtoCountmap[t]
 
-            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
+            if ( (branchid != branch.count) or f != (branch.f) 
+                 or (t != branch.t) ):
                 breakexit('there might be bug')
 
             if all_data['loud_cuts']:
@@ -1165,7 +1287,9 @@ def add_cuts(log,all_data):
                 breakexit('bug')
 
             if branchid not in branches.keys(): # perturbed lines
-                log.joint(' we do not add this cut since branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + 'was turned OFF\n')
+                log.joint(' we do not add this cut since branch ' 
+                          + str(branchid) + ' f ' + str(f) + ' t ' + str(t) 
+                          + 'was turned OFF\n')
                 linenum += 1
                 continue
 
@@ -1176,7 +1300,8 @@ def add_cuts(log,all_data):
             count_of_f = IDtoCountmap[f] 
             count_of_t = IDtoCountmap[t]
 
-            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
+            if ( (branchid != branch.count) or f != (branch.f) 
+                 or (t != branch.t) ):
                 breakexit('there might be bug')
 
             if all_data['loud_cuts']:
@@ -1223,14 +1348,17 @@ def add_cuts(log,all_data):
             themodel.addConstr(cutexp <= 1, name = constrname)
             linenum += 1
 
-    #currentTIME = time.time() - all_data['T0']
-    #log.joint(' current time after adding cuts ' + str(currentTIME) + '\n')
-    #breakexit('check')
+    all_data['num_jabr_cuts']  = numjabrcuts
+    all_data['num_i2_cuts']    = numi2cuts
+    all_data['num_limit_cuts'] = numlimitcuts
+    all_data['ID_jabr_cuts']   = numjabrcuts
+    all_data['ID_i2_cuts']     = numi2cuts
+    all_data['ID_limit_cuts']  = numlimitcuts
 
 
 def write_cuts(log,all_data):
     
-    filename = 'newcuts/cuts_' + all_data['casename'] + '.txt' #change to newcuts when running bash script
+    filename = 'newcuts4/cuts_' + all_data['casename'] + '.txt' #change to newcuts when running bash script
     log.joint(" opening file with cuts " + filename + "\n")
 
     try:
@@ -1241,7 +1369,7 @@ def write_cuts(log,all_data):
         sys.exit("failure")
     
 
-    jabr_cuts = all_data['jabr_cuts_info_updated']
+    jabr_cuts = all_data['jabr_cuts_info']
     rnd       = all_data['round'] 
 
     log.joint(' writing down to ' + filename + ' jabr-envelope cuts in round ' + str(rnd) + '\n')
@@ -1267,7 +1395,7 @@ def write_cuts(log,all_data):
         log.joint(' writing down to ' + filename + ' i2-envelope cuts in round ' + str(rnd) + '\n')
         thefile.write('#i2-envelope cuts = ' + str(all_data['num_i2_cuts']) + '\n')
         
-        i2_cuts = all_data['i2_cuts_info_updated']
+        i2_cuts = all_data['i2_cuts_info']
         for branch in i2_cuts.keys(): #BUG found
             branchcount = branch.count
             f           = branch.f
@@ -1288,7 +1416,7 @@ def write_cuts(log,all_data):
         log.joint(' writing down to ' + filename + ' limit-envelope cuts in round ' + str(rnd) + '\n')
         thefile.write('#limit-envelope cuts = ' + str(all_data['num_limit_cuts']) + '\n')
         
-        limit_cuts = all_data['limit_cuts_info_updated']
+        limit_cuts = all_data['limit_cuts_info']
         for branch in limit_cuts.keys():
             branchcount = branch.count
             f           = branch.f    #(rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
@@ -1322,7 +1450,7 @@ def parallel_check(log,all_data,branch,coeff_cft,coeff_sft,coeff_cff,coeff_ctt):
 
     threshold         = all_data['threshold']
     threshold_dotprod = all_data['threshold_dotprod']    
-    jabr_cuts_info    = all_data['jabr_cuts_info_updated']
+    jabr_cuts_info    = all_data['jabr_cuts_info']
     cuts_branch       = jabr_cuts_info[branch] 
   
     if all_data['loud_cuts']:
@@ -1373,7 +1501,7 @@ def parallel_check_i2(log,all_data,branch,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2
 
     threshold         = all_data['threshold']
     threshold_dotprod = all_data['threshold_dotprod']    
-    i2_cuts_info      = all_data['i2_cuts_info_updated']      
+    i2_cuts_info      = all_data['i2_cuts_info']      
     cuts_branch       = i2_cuts_info[branch]          
 
     if all_data['loud_cuts']:
@@ -1423,7 +1551,7 @@ def parallel_check_limit(log,all_data,branch,coeff_P,coeff_Q,from_or_to):
 
     threshold         = all_data['threshold']
     threshold_dotprod = all_data['threshold_dotprod']    
-    limit_cuts_info   = all_data['limit_cuts_info_updated']
+    limit_cuts_info   = all_data['limit_cuts_info']
     cuts_branch       = limit_cuts_info[branch]          
 
     if all_data['loud_cuts']:
@@ -1687,8 +1815,8 @@ def cut_analysis(log,all_data):
     count_rnd = 1
     
     num_jabr_cuts = all_data['num_jabr_cuts_rnd']
-    jabr_cuts_info = all_data['jabr_cuts_info']
-    jabr_cuts_info_updated = all_data['jabr_cuts_info_updated']
+    jabr_cuts_info = all_data['jabr_cuts_info'] #havent fixed this...
+    jabr_cuts_info_updated = all_data['jabr_cuts_info_updated'] #havent fixed this... *_updated deleted
     
     
     most_violated_branches = sorted(jabr_cuts_info, key=lambda k: len(jabr_cuts_info[k]), reverse=True)[:10]
@@ -1803,3 +1931,367 @@ def computei2value(log,all_data,branch,sol_c,sol_s,sol_cbusf,sol_cbust):
 
 
 
+def add_cuts_ws(log,all_data):
+
+    if '_b' in all_data['casename']:
+        original_casename = all_data['casename'][:len(all_data['casename']) - 2]
+    elif '_n_5_5' in all_data['casename'] or '_n_0_5' in all_data['casename']:
+        original_casename = all_data['casename'][:len(all_data['casename']) - 6]
+    elif '_line' in all_data['casename']:
+        original_casename = all_data['casename'][:len(all_data['casename']) - 5]
+    #elif '_line5' in all_data['casename']:
+    #    original_casename = all_data['casename'][:len(all_data['casename']) - 6]
+    else:
+        original_casename = all_data['casename']
+
+    filename = 'newcuts4/cuts_' + original_casename + '.txt' ###cuts | newcuts
+    log.joint(" opening file with cuts " + filename + "\n")
+
+
+    try:
+        thefile = open(filename, "r") 
+        lines = thefile.readlines()
+    except:
+        log.stateandquit(" cannot open file", filename)
+        sys.exit("failure")
+
+    numlines  = len(lines)
+    theround  = lines[0].split()[3]
+    firstline = lines[1].split()
+    jabr      = 1
+    
+    log.joint(' loading cuts from round ' + str(theround) + '\n')
+
+    if firstline[0] == '#Jabr-envelope':
+        numjabrcuts = int(firstline[3])
+        all_data['addcuts_numjabrcuts'] = numjabrcuts
+        log.joint(' number of Jabr-envelope cuts = ' + str(numjabrcuts) + '\n')
+    elif firstline[0] == '#i2-envelope':
+        jabr      = 0
+        i2        = 1
+        numi2cuts = int(firstline[3])
+        all_data['addcuts_numi2cuts'] = numi2cuts
+        log.joint(' no Jabr-envelope cuts to add\n')
+        log.joint(' number of i2-envelope cuts = ' + str(numi2cuts) + '\n')
+    elif firstline[0] == '#limit-envelope':
+        jabr         = 0
+        i2           = 0
+        numlimitcuts = int(firstline[3])
+        all_data['addcuts_numlimitcuts'] = numlimitcuts
+        log.joint(' no Jabr nor i2-envelope cuts to add\n')
+        log.joint(' number of limit-envelope cuts = ' + str(numlimitcuts) + '\n')
+    else:
+        log.joint(' no cuts added\n')
+        return None
+
+    linenum = 2
+
+    themodel       = all_data['themodel']
+    buses          = all_data['buses']
+    branches       = all_data['branches']
+    IDtoCountmap   = all_data['IDtoCountmap']
+    cvar           = all_data['cvar']
+    svar           = all_data['svar']
+    Pvar_f         = all_data['Pvar_f']
+    Qvar_f         = all_data['Qvar_f']
+    Pvar_t         = all_data['Pvar_t']
+    Qvar_t         = all_data['Qvar_t']    
+    FeasibilityTol = all_data['FeasibilityTol']
+
+    if all_data['i2']:
+        i2var_f = all_data['i2var_f']
+
+    #load dictionaries
+    
+    jabr_cuts       = {} #(rnd,threshold)
+    jabr_cuts_info  = {} #jabr_cuts_info[branch][cutid]   = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid)
+    i2_cuts         = {} #(rnd,threshold)
+    i2_cuts_info    = {} #(rnd,violation,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft,threshold,cutid)
+    limit_cuts      = {} #(rnd,threshold,from_or_to)
+    limit_cuts_info = {} #(rnd,violation,coeff_P,coeff_Q,threshold,cutid,from_or_to)
+    
+    for branch in branches.values():
+        jabr_cuts_info[branch]  = {}
+        i2_cuts_info[branch]    = {}
+        limit_cuts_info[branch] = {}
+    
+    cutid_jabr  = 0
+    cutid_i2    = 0
+    cutid_limit = 0
+        
+    while linenum < numlines: 
+        thisline = lines[linenum].split()
+        if thisline[0] == '#i2-envelope' and jabr:
+            numi2cuts = int(thisline[3])
+            all_data['addcuts_numi2cuts'] = numi2cuts
+            log.joint(' number of i2-envelope cuts = ' + str(numi2cuts) + '\n')
+            linenum += 1
+            jabr = 0
+            i2   = 1
+            continue
+
+        elif thisline[0] == '#limit-envelope' and i2:
+            numlimitcuts = int(thisline[3])
+            all_data['addcuts_numlimitcuts'] = numlimitcuts
+            log.joint(' number of limit-envelope cuts = ' + str(numlimitcuts) + '\n')
+            linenum += 1
+            i2       = 0
+            continue
+
+        elif jabr:
+            branchid  = int(thisline[1])
+            f         = int(thisline[3])
+            t         = int(thisline[5])
+            #cutid     = int(thisline[7])
+            rnd       = int(thisline[9])
+            violation = float(thisline[11])
+            threshold = float(thisline[13])
+            coeff_cft = float(thisline[15])
+            coeff_sft = float(thisline[17])
+            coeff_cff = float(thisline[19])
+            coeff_ctt = float(thisline[21])
+
+
+            if branchid not in branches.keys(): # perturbed lines
+                log.joint(' we do not add this cut since branch ' + str(branchid) 
+                          + ' f ' + str(f) + ' t ' + str(t) 
+                          + ' was turned OFF\n')
+                linenum += 1
+                continue
+
+            branch     = branches[branchid]
+            count_of_f = IDtoCountmap[f] 
+            count_of_t = IDtoCountmap[t]
+
+            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
+                log.joint(' branchid ' + str(branchid) + ' branch.count ' 
+                          + str(branch.count) + ' f ' + str(f) + ' branch.f ' 
+                          + str(branch.f) + ' t ' + str(t) + ' branch.t ' 
+                          + str(branch.t) + '\n')
+                breakexit('bug')
+
+            cutid_jabr += 1
+
+            jabr_cuts[(cutid_jabr,branchid)]   = (rnd,threshold)
+            jabr_cuts_info[branch][cutid_jabr] = (rnd,violation,coeff_cft,coeff_sft,coeff_cff,coeff_ctt,threshold,cutid_jabr)
+
+            if all_data['loud_cuts']:
+                log.joint(' --> new Jabr-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid_jabr) + '\n' )
+                log.joint(' LHS coeff ' + ' cft ' + str(coeff_cft) + ' sft ' 
+                          + str(coeff_sft) + ' cff ' + str(coeff_cff) 
+                          + ' ctt ' + str(coeff_ctt) + '\n' )
+                            
+            if all_data['jabr_validity']:
+                sol_c           = all_data['sol_cvalues'][branch]
+                sol_s           = all_data['sol_svalues'][branch]
+                sol_cbusf       = all_data['sol_cvalues'][buses[count_of_f]]
+                sol_cbust       = all_data['sol_cvalues'][buses[count_of_t]]
+                sol_violation   = coeff_cft * sol_c + coeff_sft * sol_s + coeff_cff * sol_cbusf + coeff_ctt * sol_cbust
+                sol_relviolation   = sol_violation / ( ( coeff_cft**2 + coeff_sft**2 + coeff_cff**2 + coeff_ctt**2 )**0.5 ) 
+
+                if sol_relviolation > FeasibilityTol:
+                    log.joint(' WARNING, the Jabr-envelope cut associated to branch ' + str(branch.count) + ' f ' + str(branch.f) + ' t ' + str(branch.t) + ' is violated by the AC solution!\n')
+                    log.joint(' violation ' + str(sol_violation) + '\n')
+                    log.joint(' relative violation ' + str(sol_relviolation) + '\n')
+                    log.joint(' values (AC solution)' + ' cft ' + str(sol_c) + ' sft ' + str(sol_s) + ' cff ' + str(sol_busf) + ' ctt ' + str(sol_cbust) + '\n' )
+                    breakexit('check!')
+                else:
+                    log.joint(' AC solution satisfies Jabr inequality at branch ' + str(branch.count) + ' with slack ' + str(sol_relviolation) + '\n')
+
+
+            cutexp = LinExpr()
+            constrname = "jabr_cut_"+str(cutid_jabr)+"_"+str(branchid)+"r_"+str(rnd)+"_"+str(f)+"_"+str(t)
+            cutexp += coeff_cft * cvar[branch] + coeff_sft * svar[branch] + coeff_cff * cvar[buses[count_of_f]] + coeff_ctt * cvar[buses[count_of_t]]
+
+            themodel.addConstr(cutexp <= 0, name = constrname)            
+            linenum += 1
+
+        elif (jabr == 0) and i2:
+            #log.joint(' here we have the bug, printing thisline[1] ' + thisline[1] + '\n')
+            branchid   = int(thisline[1])
+            f          = int(thisline[3])
+            t          = int(thisline[5])
+            #cutid      = int(thisline[7])
+            rnd        = int(thisline[9])
+            violation  = float(thisline[11])
+            threshold  = float(thisline[13])
+            coeff_Pft  = float(thisline[15])
+            coeff_Qft  = float(thisline[17])
+            coeff_cff  = float(thisline[19])
+            coeff_i2ft = float(thisline[21])
+
+            if branchid not in branches.keys(): # perturbed lines
+                log.joint(' we do not add this cut since branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + 'was turned OFF\n')
+                linenum += 1
+                continue
+
+            branch     = branches[branchid]
+            count_of_f = IDtoCountmap[f] 
+            count_of_t = IDtoCountmap[t]
+
+            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
+                breakexit('there might be bug')
+
+
+            cutid_i2 += 1 # updating i2-cut counter
+
+            # updating dictionaries
+            
+            i2_cuts[(cutid_i2,branchid)]   = (rnd,threshold)
+            i2_cuts_info[branch][cutid_i2] = (rnd,violation,coeff_Pft,coeff_Qft,coeff_cff,coeff_i2ft,threshold,cutid_i2)
+            
+
+            if all_data['loud_cuts']:
+                log.joint(' --> new i2-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid_i2) + '\n' )
+                log.joint(' LHS coeff ' + ' Pft ' + str(coeff_Pft) + ' Qft ' 
+                          + str(coeff_Qft) + ' cff ' + str(coeff_cff) 
+                          + ' i2ft ' + str(coeff_i2ft) + '\n' )
+            
+            if all_data['i2_validity']:
+                sol_Pf           = all_data['sol_Pfvalues'][branch]
+                sol_Qf           = all_data['sol_Qfvalues'][branch]
+                sol_c            = all_data['sol_cvalues'][branch]
+                sol_s            = all_data['sol_svalues'][branch]
+                sol_cbusf        = all_data['sol_cvalues'][buses[count_of_f]]
+                sol_cbust        = all_data['sol_cvalues'][buses[count_of_t]]
+                sol_i2f          = computei2value(log,all_data,branch,sol_c,sol_s,sol_cbusf,sol_cbust)
+                sol_violation    = coeff_Pft * sol_Pf + coeff_Qft * sol_Qf + coeff_cff * sol_cbusf + coeff_i2ft * sol_i2f
+                sol_relviolation = sol_violation / ( ( coeff_Pft**2 + coeff_Qft**2 + coeff_cff**2 + coeff_i2ft**2 )**0.5 ) 
+
+                if sol_relviolation > FeasibilityTol:
+                    log.joint(' WARNING, the i2-envelope cut associated to branch ' 
+                              + str(branchid) + ' f ' + str(f) + ' t ' + str(t) 
+                              + ' is violated by the AC solution!\n')
+                    log.joint(' violation ' + str(sol_violation) + '\n')
+                    log.joint(' relative violation ' + str(sol_relviolation) + '\n')
+                    log.joint(' values (AC solution) ' + ' Pft ' + str(sol_Pf) 
+                              + ' Qft ' + str(sol_Qf) + ' cff ' + str(sol_cbusf) 
+                              + ' i2ft ' + str(sol_i2f) + '\n' )
+                    breakexit('check!')
+                else:
+                    log.joint(' AC solution satisfies i2 inequality at branch ' + str(branchid) + ' with slack ' + str(sol_relviolation) + '\n')
+
+            cutexp     = LinExpr()
+            constrname = "i2_cut_"+str(cutid_i2)+"_"+str(branchid)+"r_"+str(rnd)+"_"+str(f)+"_"+str(t)
+            cutexp    += coeff_Pft * Pvar_f[branch] + coeff_Qft * Qvar_f[branch] + coeff_cff * cvar[buses[count_of_f]] + coeff_i2ft * i2var_f[branch]
+
+            themodel.addConstr(cutexp <= 0, name = constrname)
+            linenum += 1
+
+
+        elif (jabr == 0) and (i2 == 0):
+            branchid   = int(thisline[1])
+            f          = int(thisline[3])
+            t          = int(thisline[5])
+            cutid      = int(thisline[7])
+            if thisline[14] == 'Pft':
+                from_or_to = 'f'
+            elif thisline[14] == 'Ptf':
+                from_or_to = 't'
+            else:
+                log.joint(' look for a bug\n')
+                breakexit('bug')
+
+            if branchid not in branches.keys(): # perturbed lines
+                log.joint(' we do not add this cut since branch ' + str(branchid) + ' f ' + str(f) + ' t ' + str(t) + 'was turned OFF\n')
+                linenum += 1
+                continue
+
+            rnd        = int(thisline[9])
+            violation  = float(thisline[11])
+            threshold  = float(thisline[13])
+            coeff_P    = float(thisline[15])
+            coeff_Q    = float(thisline[17])
+
+            branch     = branches[branchid]
+            count_of_f = IDtoCountmap[f] 
+            count_of_t = IDtoCountmap[t]
+
+            if (branchid != branch.count) or f != (branch.f) or (t != branch.t):
+                breakexit('there might be bug')
+
+            cutid_limit += 1 # updating limit-cut counter
+            
+            # Updating dictionaries
+            
+            limit_cuts[(cutid_limit,branchid)]   = (rnd,threshold,from_or_to)
+            limit_cuts_info[branch][cutid_limit] = (rnd,violation,coeff_P,coeff_Q,threshold,cutid_limit,from_or_to)
+
+            if all_data['loud_cuts']:
+                log.joint(' --> new limit-envelope cut\n')
+                log.joint(' branch ' + str(branchid) + ' f ' + str(f) + ' t ' 
+                          + str(t) + ' cutid ' + str(cutid_limit) + '\n' )
+                if from_or_to == 'f':
+                    log.joint(' LHS coeff ' + ' Pft ' + str(coeff_P) 
+                              + ' Qft ' + str(coeff_Q) + '\n')
+                elif from_or_to == 't':
+                    log.joint(' LHS coeff ' + ' Ptf ' + str(coeff_P) 
+                              + ' Qtf ' + str(coeff_Q) + '\n')
+            
+            
+            if all_data['limit_validity']:
+                if from_or_to == 'f':
+                    sol_P           = all_data['sol_Pfvalues'][branch]
+                    sol_Q           = all_data['sol_Qfvalues'][branch]
+                elif from_or_to == 't':
+                    sol_P           = all_data['sol_Ptvalues'][branch]
+                    sol_Q           = all_data['sol_Qtvalues'][branch]
+                sol_violation    = coeff_P * sol_P + coeff_Q * sol_Q - 1
+
+                if sol_violation > FeasibilityTol:
+                    log.joint(' WARNING, the limit-envelope cut associated to branch ' 
+                              + str(branchid) + ' f ' + str(f) + ' t ' 
+                              + str(t) + ' is violated by the AC solution!\n')
+                    log.joint(' violation ' + str(sol_violation) + '\n')
+                    if from_or_to == 'f':
+                        log.joint(' values (AC solution) ' + ' Pft ' 
+                                  + str(sol_P) + ' Qft ' + str(sol_Q) + '\n')
+                    elif from_or_to == 't':
+                        log.joint(' values (AC solution) ' + ' Ptf ' 
+                                  + str(sol_P) + ' Qtf ' + str(sol_Q) + '\n')
+                    breakexit('check!')
+                else:
+                    log.joint(' AC solution satisfies limit inequality at branch ' 
+                              + str(branchid) + ' with slack ' + str(sol_violation) 
+                              + '\n')
+
+
+            cutexp     = LinExpr()
+            if from_or_to == 'f':
+                constrname = "limit_cut_"+str(cutid_limit)+"_"+str(branchid)+"r_"+str(rnd)+"_"+str(f)+"_"+str(t)
+                cutexp    += coeff_P * Pvar_f[branch] + coeff_Q * Qvar_f[branch]
+            elif from_or_to == 't':
+                constrname = "limit_cut_"+str(cutid_limit)+"_"+str(branchid)+"r_"+str(rnd)+"_"+str(f)+"_"+str(t)
+                cutexp    += coeff_P * Pvar_t[branch] + coeff_Q * Qvar_t[branch]
+
+            themodel.addConstr(cutexp <= 1, name = constrname)
+            linenum += 1
+    
+    if cutid_jabr != numjabrcuts:
+        breakexit('bug, check jabrs')
+    if cutid_i2 != numi2cuts:
+        breakexit('bug, check i2s')
+    if cutid_limit != numlimitcuts:
+        breakexit('bug, check limits')
+
+    all_data['num_jabr_cuts']  = numjabrcuts
+    all_data['num_i2_cuts']    = numi2cuts
+    all_data['num_limit_cuts'] = numlimitcuts
+    all_data['ID_jabr_cuts']   = numjabrcuts
+    all_data['ID_i2_cuts']     = numi2cuts
+    all_data['ID_limit_cuts']  = numlimitcuts
+
+    all_data['jabr_cuts']       = jabr_cuts
+    all_data['jabr_cuts_info']  = jabr_cuts_info
+    all_data['i2_cuts']         = i2_cuts
+    all_data['i2_cuts_info']    = i2_cuts_info
+    all_data['limit_cuts']      = limit_cuts
+    all_data['limit_cuts_info'] = limit_cuts_info
+
+    #currentTIME = time.time() - all_data['T0']
+    #log.joint(' current time after adding cuts ' + str(currentTIME) + '\n')
+    #breakexit('check')
