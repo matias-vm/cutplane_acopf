@@ -21,6 +21,8 @@ import reader
 import time
 import math
 from cuts import *
+from tools import *
+import random
 
       
 def gocutplane(log, all_data):
@@ -42,7 +44,8 @@ def gocutplane(log, all_data):
     getsol_matpower(log,all_data)
 
   if all_data['knitro_sol']:
-    getsol_knitro(log,all_data)
+    #getsol_knitro(log,all_data)
+    getsol_knitro2(log,all_data)
 
   ################################ VARIABLES ##################################
 
@@ -124,7 +127,7 @@ def gocutplane(log, all_data):
     maxprod     = buses[count_of_f].Vmax*buses[count_of_t].Vmax
     minprod     = buses[count_of_f].Vmin*buses[count_of_t].Vmin
 
-    #c variables 
+    #c variables
     ubound =  maxprod
     lbound =  minprod*math.cos(branch.maxangle_rad)
 
@@ -471,6 +474,10 @@ def gocutplane(log, all_data):
   if all_data['loss_inequalities']:    
     constrcount += loss_inequalities(log,all_data)
 
+  #reactive power loss-inequalities
+  if all_data['qloss_inequalities']:    
+    constrcount += qloss_inequalities(log,all_data)
+
   #jabr inequalities
   if all_data['jabr_inequalities']:
     constrcount += jabr_inequalities(log,all_data)
@@ -544,11 +551,12 @@ def gocutplane(log, all_data):
   themodel.Params.Method    = all_data['solver_method']
   themodel.Params.Crossover = all_data['crossover'] 
 
+
   if all_data['solver_method'] == 2:
     themodel.Params.BarHomogeneous = 1
     themodel.Params.BarConvTol     = 1e-6
-    #themodel.Params.FeasibilityTol = 1e-4
-    #themodel.Params.OptimalityTol  = 1e-4
+    themodel.Params.FeasibilityTol = 1e-6
+    themodel.Params.OptimalityTol  = 1e-6
 
   themodel.Params.NumericFocus = 1
   themodel.Params.OutPutFlag = 1
@@ -581,6 +589,7 @@ def gocutplane(log, all_data):
     if all_data['writelps']:
       themodel.write(all_data['casename']+'_precomputed_cuts.lp')
       log.joint(' model with precomputed written to .lp file\n')
+      breakexit('c?')
 
   ########################## CUTPLANE MAIN LOOP ###############################
 
@@ -591,6 +600,11 @@ def gocutplane(log, all_data):
   oldobj                             = 1
   gap                                = 1e20
 
+  #  all_data['losstest'] 
+  all_data['losstest_dic']        = {}
+  all_data['losstest_loss']       = {}
+  all_data['losstest_branchloss'] = {}
+  all_data['losstest_obj']        = {}
 
   while ((all_data['round'] <= all_data['max_rounds']) and 
          (all_data['runtime'] <= all_data['max_time']) and 
@@ -619,7 +633,7 @@ def gocutplane(log, all_data):
 
     ########################### STORING SOLUTION ##############################
 
-    if all_data['writesol'] == 0:
+    if all_data['writesol'] == 0 and all_data['writesol_wtol'] == 0:
 
       log.joint(' storing current solution ...\n')
       
@@ -668,17 +682,24 @@ def gocutplane(log, all_data):
       
     ####################### WRITING SOL TO A FILE #############################
     
-    if all_data['writesol']:
+    if all_data['writesol'] or all_data['writesol_wtol']:
+
+      eps = all_data['writesol_wtol']
 
       namesolfile = 'sol_ws_' + all_data['casename'] + '.txt'
       #namesolfile = 'sols_warmstarted/sol_ws_' + all_data['casename'] + '.txt'
       #namesolfile = 'cutplane_sols/cutplane_sol_' + all_data['casename'] + '.txt'
-      solfile     = open(namesolfile,'a')
+
+      if all_data['newsol']:
+        namesolfile = 'cutplanesol_'+ all_data['casename'] +'.txt'
+
+
+      solfile     = open(namesolfile,'a+')
       solfile.write('round' + str(all_data['round']) + '\n' )
       solfile.write('obj ' + str(all_data['objval']) + '\n')
 
       #values
-      log.joint(' storing current solution...\n')
+      log.joint(' storing current solution ...\n')
 
       cvalues       = {}
       svalues       = {}
@@ -695,13 +716,19 @@ def gocutplane(log, all_data):
       i2fvalues     = {}
       #i2tvalues     = {}    
 
-
       for bus in buses.values():
         cvalues[bus] = cvar[bus].x
-        varname      = cvar[bus].varname + ' = '
-        lines        = [varname,str(cvalues[bus]),'\n']
+        varname      = cvar[bus].varname
+        if all_data['writesol']:
+          lines        = [varname,' = ',str(cvalues[bus]),'\n']
+        elif all_data['writesol_wtol']:
+          lines        = [str((cvalues[bus]-eps)),' <= ' + varname 
+                          + ' <= ',str((cvalues[bus]+eps)),'\n']
         solfile.writelines(lines)
-      
+
+      ##### LOSS
+      LOSS = False
+
       for branch in branches.values():
         f                   = branch.f
         t                   = branch.t
@@ -722,22 +749,53 @@ def gocutplane(log, all_data):
         Qfvalues[branch]      = Qvar_f[branch].x
         Qtvalues[branch]      = Qvar_t[branch].x
 
-        cvarname = cvar[branch].varname + ' = '
-        svarname = svar[branch].varname + ' = '
-        cslines  = [cvarname,str(cvalues[branch]),'\n',svarname,str(svalues[branch]),'\n']
-        Plines   = [Pvar_f[branch].varname + ' = ',str(Pvar_f[branch].x),'\n',Pvar_t[branch].varname + ' = ',str(Pvar_t[branch].x),'\n']
-        Qlines   = [Qvar_f[branch].varname + ' = ',str(Qvar_f[branch].x),'\n',Qvar_t[branch].varname + ' = ',str(Qvar_t[branch].x),'\n']
+        cvarname = cvar[branch].varname 
+        svarname = svar[branch].varname 
+        
+        if all_data['writesol'] and all_data['newsol'] == 0:
+          cslines  = [cvarname,' = ',str(cvalues[branch]),'\n',svarname,' = ',str(svalues[branch]),'\n']
+          Plines   = [Pvar_f[branch].varname + ' = ',str(Pvar_f[branch].x),'\n',Pvar_t[branch].varname + ' = ',str(Pvar_t[branch].x),'\n']
+          Qlines   = [Qvar_f[branch].varname + ' = ',str(Qvar_f[branch].x),'\n',Qvar_t[branch].varname + ' = ',str(Qvar_t[branch].x),'\n']
 
-        solfile.writelines(cslines)
-        solfile.writelines(Plines)
-        solfile.writelines(Qlines)
+          solfile.writelines(cslines)
+          solfile.writelines(Plines)
+          solfile.writelines(Qlines)
+
+          if (Pvar_f[branch].x + Pvar_t[branch].x) < 0:
+            LOSS = True
+
+
+        elif all_data['writesol_wtol'] and all_data['newsol'] == 0:
+          cslines  = [str((cvalues[branch]-eps)), ' <= ' + cvarname + ' <= ', str((cvalues[branch]+eps)),'\n',str((svalues[branch]-eps)), ' <= ' + svarname + ' <= ', str((svalues[branch]+eps)),'\n']
+          #Plines   = [str((Pvar_f[branch].x - eps)) ,' <= ',Pvar_f[branch].varname,' <= ',str((Pvar_f[branch].x + eps)),'\n',str((Pvar_t[branch].x-eps)),' <= ' + Pvar_t[branch].varname + ' <= ',str((Pvar_t[branch].x+eps)),'\n']
+          #Qlines   = [str((Qvar_f[branch].x - eps)) ,' <= ',Qvar_f[branch].varname,' <= ',str((Qvar_f[branch].x + eps)),'\n',str((Qvar_t[branch].x-eps)),' <= ' + Qvar_t[branch].varname + ' <= ',str((Qvar_t[branch].x+eps)),'\n']
+    
+          solfile.writelines(cslines)
+
+        #solfile.writelines(Plines)
+        #solfile.writelines(Qlines)
+
+        
 
         if all_data['i2']:
           i2fvalues[branch] = i2var_f[branch].x
           i2line            = [i2var_f[branch].varname + ' = ',str(i2fvalues[branch]),'\n']   
-          solfile.writelines(i2line)
+          #solfile.writelines(i2line)
           #i2tvalues[branch] = i2var_t[branch].x 
 
+      if LOSS:
+        log.joint('free generation\n') 
+
+      if all_data['newsol']:
+        all_data['cvalues'] = cvalues
+        all_data['svalues'] = svalues
+        getangles(log,all_data)
+        angles = all_data['angles']
+        for busid in angles.keys():
+          varname = 'theta_' + str(busid)
+          angle   = angles[busid]
+          lines = [varname,' = ',str(angle),'\n']
+          solfile.writelines(lines)
 
       for gen in gens.values():
         GenPvalues[gen] = GenPvar[gen].x
@@ -780,11 +838,30 @@ def gocutplane(log, all_data):
       if all_data['linear_objective'] or all_data['hybrid']:
         all_data['dicGenPvalues'] = dicGenPvalues
 
+
+
       log.joint(' done storing and writing down values\n')
+
 
     ########################### ROUND STATISTICS ##############################
 
     cutplane_stats(log,all_data)
+
+    ########################### Flow Decomposition ############################
+
+    # log.joint(' ploss ' + str(sum(plossvalues.values())) + '\n')
+
+    # if all_data['writesol']:
+    #   all_data['sol_Pfvalues']   = all_data['Pfvalues']
+    #   all_data['sol_Ptvalues']   = all_data['Ptvalues']
+    #   all_data['sol_GenPvalues'] = {}
+
+    #   for gen in gens.values():
+    #     all_data['sol_GenPvalues'][gen.count] = all_data['GenPvalues'][gen]
+    
+    #   log.joint(' sol_GenPvalues ' + str(all_data['sol_GenPvalues']) + '\n') 
+
+    #   flowdecomp(log,all_data)
 
     ######################### SUMMARY EXPERIMENTS #############################
 
@@ -802,16 +879,16 @@ def gocutplane(log, all_data):
 
     summary_ws.close()
 
-    if all_data['max_rounds'] == 1:
-      log.joint(' bye!\n')
-      sys.exit(0)
+    #if all_data['max_rounds'] == 1:
+    #  log.joint(' bye!\n')
+    #  sys.exit(0)
 
     ############################### CUTS ######################################
 
-    # Cuts' computations and management
+    # Cut computations and management
     cutplane_cuts(log,all_data)
 
-    # Cuts' statistics
+    # Cut statistics
     cutplane_cutstats(log,all_data)
     
     themodel.update()
@@ -825,11 +902,71 @@ def gocutplane(log, all_data):
       write_cuts(log,all_data)
 
     ############################### WRITE LPS #################################
+    
+    if all_data['losstest']:
+      themodel.write('perturbedjabr.lp')
+      constr = themodel.getQConstrs()[all_data['rbranch']]
+      constr.setAttr("QCRHS",0)
+  
+      themodel.update()
+ 
+    ###########
 
     if all_data['writelps'] and ( all_data['round'] > 0 ):
       name = 'post_cuts' + '_' + str(all_data['round']) + '.lp'
       themodel.write(name)
       log.joint(' model with new cuts written to .lp file\n')
+
+    # valloss = 0
+    # for branch in branches.values():
+    #   loss = all_data['Pfvalues'][branch] + all_data['Ptvalues'][branch]
+    #   log.joint(' loss at branch ' + str(branch.count) + ' = ' 
+    #             + str(loss) + '\n')
+    #   valloss += loss
+
+    # log.joint('ploss ' + str(sum(plossvalues.values())) + '\n')
+    # log.joint('value loss ' + str(valloss) + '\n')
+
+    ################# losses test
+
+    if all_data['losstest']:
+      rbranch = all_data['branches'][all_data['rbranch']]
+
+      rbranchloss = all_data['Pfvalues'][rbranch] + all_data['Ptvalues'][rbranch]
+      all_data['losstest_dic'][all_data['round']] = (all_data['rbranch'],
+                                                     all_data['objval'],
+                                                     sum(plossvalues.values()),
+                                                     rbranchloss)
+
+      all_data['losstest_loss'][all_data['round']] = sum(plossvalues.values())
+      all_data['losstest_branchloss'][all_data['round']] = rbranchloss
+      all_data['losstest_obj'][all_data['round']] = all_data['objval']
+
+      avg        = sum(all_data['losstest_loss'].values()) / all_data['round']
+      avg_branch = sum(all_data['losstest_branchloss'].values()) / all_data['round']
+
+      avg_obj = sum(all_data['losstest_obj'].values()) / all_data['round'] 
+      maxloss = max(all_data['losstest_loss'].values())
+      maxloss_branch = max(all_data['losstest_branchloss'].values())
+
+      minloss = min(all_data['losstest_loss'].values())
+      minloss_branch = min(all_data['losstest_branchloss'].values())
+
+      log.joint(' round ' + str(all_data['round']) + '\n')
+      log.joint(' random branch ' + str(all_data['rbranch']) + '\n')
+      log.joint(' current obj avg ' + str(avg_obj) + '\n' )
+      log.joint(' current losstest avg ' + str(avg) + '\n' )
+      log.joint(' current losstest avg (branch)' + str(avg_branch) + '\n' )
+      log.joint(' current max loss ' + str(maxloss) + '\n')
+      log.joint(' current max loss (at the branch)' + str(maxloss_branch) + '\n')
+      log.joint(' current min loss ' + str(minloss) + '\n')
+      log.joint(' current min loss (at the branch)' + str(minloss_branch) + '\n')
+      #log.joint(' losstest ' + str(all_data['losstest_loss']) + '\n')
+      #log.joint(' losstest (branch) ' + str(all_data['losstest_branchloss']) + '\n')
+      #breakexit('c')
+      if all_data['round'] == 50:
+        return None
+
 
     ########################## CHECK OBJ IMPROVEMENT ##########################
 
@@ -844,9 +981,8 @@ def gocutplane(log, all_data):
 
     all_data['round'] += 1
     
-
-
     ###########################################################################
+
 
 
 def fixflows(log,all_data):
@@ -1119,8 +1255,7 @@ def getsol_matpower(log,all_data):
   linenum  = 1
   while linenum < lenlines:
     thisline = lines[linenum].split(',')
-    bus_id   = int(thisline[0])
-    buscount = IDtoCountmap[bus_id]
+    buscount = int(thisline[0]) #bug, not bus_id -> matpower uses buscount
     bus      = buses[buscount]
 
     sol_vm[bus]        = float(thisline[1])
@@ -1354,6 +1489,63 @@ def loss_inequalities(log,all_data):
   
   return counter_loss
   
+def qloss_inequalities(log,all_data):
+
+  themodel       = all_data['themodel']
+  branches       = all_data['branches']
+  Pvar_f         = all_data['Pvar_f']
+  Pvar_t         = all_data['Pvar_t']
+  Qvar_f         = all_data['Qvar_f']
+  Qvar_t         = all_data['Qvar_t']
+  FeasibilityTol = all_data['FeasibilityTol']
+
+  if ( all_data['matpower_sol'] or all_data['knitro_sol'] ) and all_data['qloss_validity']:
+    FeasibilityTol = all_data['FeasibilityTol']
+    log.joint('  adding and checking validity of loss inequalities wrt a solution\n')
+    log.joint('   feasibility tolerance ' + str(FeasibilityTol) + '\n')
+  else:
+    log.joint('  qloss inequalities\n')
+
+  all_data['qloss_cuts'] = {}
+  qcounter_loss = 0
+
+  for branch in branches.values():
+    if branch.r <= 0 or (branch.bc != 0): ##!!!
+      continue
+
+    branchcount = branch.count
+    f           = branch.f
+    t           = branch.t
+
+    if all_data['qloss_validity']:
+     sol_Pf     = all_data['sol_Qfvalues'][branch]
+     sol_Pt     = all_data['sol_Qtvalues'][branch]
+     violation  = - (sol_Qf + sol_Qt)
+
+     if violation > FeasibilityTol:
+       log.joint('   WARNING, the qloss inequality associated to branch ' + str(branchcount) + ' f ' + str(f) + ' t ' + str(t) + ' is violated by the AC solution!\n')
+       log.joint('   violation ' + str(violation) + '\n')
+       log.joint('   values (AC solution) ' + ' Qf ' + str(sol_Qf) + ' Pt ' + str(sol_Qt) + '\n')
+       breakexit('check!')
+     else:
+       log.joint('   AC solution satisfies loss inequality at branch ' + str(branchcount) + ' with slack ' + str(violation) + '\n')
+
+    qcounter_loss                 += 1
+    all_data['qloss_cuts'][branch] = (0,0,FeasibilityTol)
+
+    qlossexp    = LinExpr()
+    constrname = "qloss_ineq_"+str(branch.count)+"_"+str(f)+"_"+str(t)
+    qlossexp   += (Qvar_f[branch] + Qvar_t[branch]) - (branch.x/branch.r)*(Pvar_f[branch] + Pvar_t[branch])
+    themodel.addConstr(qlossexp == 0, name = constrname)
+
+  all_data['num_qloss_cuts']         = qcounter_loss
+  all_data['num_qloss_cuts_dropped'] = 0
+  all_data['dropped_qloss']          = []
+
+  log.joint('   %d qloss inequalities added\n'%qcounter_loss) 
+  
+  return qcounter_loss
+
 def jabr_inequalities(log,all_data):
 
   themodel       = all_data['themodel']
@@ -1454,6 +1646,10 @@ def i2_def(log,all_data):
     b           = y.imag
     bshunt      = branch.bc
     angle       = branch.angle_rad
+
+    # if f == 549 and t == 5002:
+    #   log.joint(' g ' + str(g) + ' b ' + str(b) + ' bshunt ' + str(bshunt) + ' angle ' + str(angle) + ' ratio ' + str(ratio) + '\n')
+    #   breakexit('c')
 
     #first f
     expr_f += (g*g + b*b)/(ratio*ratio) * ( (cvar[buses[count_of_f]]/(ratio*ratio)) + cvar[buses[count_of_t]] - (2/ratio) * ( cvar[branch] * math.cos(angle) + svar[branch] * math.sin(angle) ) )
@@ -1766,6 +1962,8 @@ def cutplane_stats(log,all_data):
   log.joint(' objective = %g\n' % all_data['objval'])
   log.joint(' solver status = ' + str(all_data['optstatus']) 
             + ' solver method = ' + str(themodel.params.method) + '\n')
+  if themodel.params.method == 2:
+    log.joint(' crossover ' + str(themodel.params.crossover) + '\n')
   log.joint(' BarConTol = ' + str(themodel.params.BarConvTol) 
             + ' FeasTol = ' + str(themodel.params.FeasibilityTol) 
             + ' OptTol = ' + str(themodel.params.OptimalityTol) + '\n') 
@@ -1868,7 +2066,6 @@ def cutplane_stats(log,all_data):
               % all_data['ftol_counter'])
 
   log.joint(' ************************************************************\n') 
-
 
 
 def cutplane_cutstats(log,all_data):
@@ -2075,6 +2272,10 @@ def cutplane_optimize(log,all_data):
   themodel = all_data['themodel']
 
   log.joint(' solving model with method ' + str(themodel.params.method) + '\n')
+  log.joint(' crossover ' + str(themodel.params.crossover) + '\n')
+
+  if all_data['losstest']:
+    all_data['rbranch'] = randombranch(log,all_data)
   
   t0_solve = time.time()
   themodel.optimize()
@@ -2088,6 +2289,11 @@ def cutplane_optimize(log,all_data):
     t0_solve = time.time()
     themodel.optimize()
     t1_solve = time.time()
+
+    breakexit('for now')
+
+    themodel.computeIIS()
+    themodel.write('model.ilp')
 
     all_data['runtime'] = t1_solve - all_data['T0']
 
@@ -2111,6 +2317,11 @@ def cutplane_optimize(log,all_data):
     log.joint(' -> LP infeasible\n')
 
     all_data['runtime'] = time.time() - all_data['T0']
+
+    breakexit('for now')
+
+    themodel.computeIIS()
+    model.write('model.ilp')
 
     log.joint(' writing casename, opt status, and runtime to summary_ws.log\n')
 
@@ -2154,5 +2365,1144 @@ def cutplane_optimize(log,all_data):
   all_data['optstatus']               = themodel.status
   all_data['solvertime']              = t1_solve - t0_solve
   all_data['cumulative_solver_time'] += (t1_solve - t0_solve)  
+
+
+def getsol_knitro2(log,all_data):
+
+  casename    = all_data['casename']
+  filename    = 'knitro_sols2/ksol_'+ casename +'.txt'
+
+  try:
+    thefile   = open(filename, "r")
+    lines     = thefile.readlines()
+    lenlines  = len(lines)
+    thefile.close()
+  except:
+    log.stateandquit("cannot open file " + datafilename)
+    sys.exit("failure")
+
+  branches     = all_data['branches']
+  buses        = all_data['buses']
+  gens         = all_data['gens']
+  IDtoCountmap = all_data['IDtoCountmap'] 
+
+  sol_obj        = 0
+  sol_vm         = {}
+  sol_angle      = {}
+  sol_cvalues    = {}
+  sol_svalues    = {}
+  sol_evalues    = {}
+  sol_fvalues    = {}
+  sol_Pfvalues   = {}
+  sol_Ptvalues   = {}
+  sol_Qfvalues   = {}
+  sol_Qtvalues   = {}
+  sol_GenPvalues = {}
+  sol_GenQvalues = {}
+  sol_IPvalues   = {}
+  sol_IQvalues   = {}
+  sol_allvars    = {}
+
+
+  linenum = 0
+  log.joint(' reading file\n')
+  while linenum < lenlines:
+    thisline = lines[linenum].split()
+    if thisline[0] == 'value':
+      sol_obj              = float(lines[0].split()[1])
+    elif thisline[0] == 'bus':
+      buscount             = int(thisline[1])
+      bus                  = buses[buscount]
+      busid                = bus.nodeID
+      sol_vm[bus]          = float(thisline[3])
+      sol_angle[bus]       = float(thisline[5])
+      v2value              = sol_vm[bus]**2
+      evalue               = sol_vm[bus] * math.cos(sol_angle[bus])
+      fvalue               = sol_vm[bus] * math.sin(sol_angle[bus])
+      
+      sol_cvalues[bus]     = v2value
+      sol_evalues[bus]     = evalue
+      sol_fvalues[bus]     = fvalue
+
+      cname = 'c_' + str(busid) + '_' + str(busid)
+      ename = 'e_' + str(busid)
+      fname = 'f_' + str(busid)
+
+      sol_allvars[cname] = v2value
+      sol_allvars[ename] = evalue
+      sol_allvars[fname] = fvalue
+
+    elif thisline[0] == 'branch':
+      branchid             = int(thisline[1])
+      branch               = branches[branchid]
+      f                    = branch.f
+      t                    = branch.t
+      sol_Pfvalues[branch] = float(thisline[7])
+      sol_Ptvalues[branch] = float(thisline[9])
+      sol_Qfvalues[branch] = float(thisline[11])
+      sol_Qtvalues[branch] = float(thisline[13])
+
+      Pfname  = 'P_' + str(branchid) + '_' + str(f) + '_' + str(t)
+      Ptname  = 'P_' + str(branchid) + '_' + str(t) + '_' + str(f)
+      Qfname  = 'Q_' + str(branchid) + '_' + str(f) + '_' + str(t)
+      Qtname  = 'Q_' + str(branchid) + '_' + str(t) + '_' + str(f)
+
+      sol_allvars[Pfname]  = float(thisline[7])
+      sol_allvars[Ptname]  = float(thisline[9])
+      sol_allvars[Qfname]  = float(thisline[11])
+      sol_allvars[Qtname]  = float(thisline[13])
+
+    elif thisline[0] == 'genid':
+      genid      = int(thisline[1])
+      gen_nodeID = int(thisline[3])
+      sol_GenPvalues[genid] = float(thisline[5])
+      sol_GenQvalues[genid] = float(thisline[7])
+
+      GPname = "GP_" + str(genid) + "_" + str(gen_nodeID)
+      GQname = "GQ_" + str(genid) + "_" + str(gen_nodeID)
+
+      sol_allvars[GPname] = float(thisline[5])
+      sol_allvars[GQname] = float(thisline[7])
+
+    linenum += 1
+
+  for branch in branches.values(): #this could be added to ksol.txt (1)
+    branchid   = branch.count
+    f          = branch.f
+    t          = branch.t
+    count_of_f = IDtoCountmap[f]
+    count_of_t = IDtoCountmap[t]
+    bus_f      = buses[count_of_f]
+    bus_t      = buses[count_of_t]
+    vm_f       = sol_vm[bus_f]
+    vm_t       = sol_vm[bus_t]
+
+    sol_cvalues[branch] = vm_f * vm_t * math.cos(sol_angle[bus_f] - sol_angle[bus_t])
+    sol_svalues[branch] = vm_f * vm_t * math.sin(sol_angle[bus_f] - sol_angle[bus_t])
+    
+    cftname = 'c_' + str(branchid) + '_' + str(f) + '_' + str(t)
+    sftname = 's_' + str(branchid) + '_' + str(f) + '_' + str(t)
+
+    sol_allvars[cftname] = sol_cvalues[branch]
+    sol_allvars[sftname] = sol_svalues[branch]
+  
+  for bus in buses.values(): #this could be added to ksol.txt (2)
+    IPvalue = - bus.Pd
+    IQvalue = - bus.Qd
+    IPname  = 'IP_' + str(bus.nodeID)
+    IQname  = 'IQ_' + str(bus.nodeID)
+
+    for gencounter in bus.genidsbycount:
+      if gens[gencounter].status:
+        IPvalue += sol_GenPvalues[gencounter]
+        IQvalue += sol_GenQvalues[gencounter]
+
+    sol_IPvalues[bus] = IPvalue
+    sol_IQvalues[bus] = IQvalue
+
+    sol_allvars[IPname] = IPvalue
+    sol_allvars[IQname] = IQvalue
+
+
+  all_data['sol_vm']       = sol_vm
+  all_data['sol_angle']    = sol_angle
+  all_data['sol_cvalues']  = sol_cvalues
+  all_data['sol_svalues']  = sol_svalues
+  all_data['sol_evalues']  = sol_evalues
+  all_data['sol_fvalues']  = sol_fvalues
+  all_data['sol_Pfvalues']   = sol_Pfvalues
+  all_data['sol_Ptvalues']   = sol_Ptvalues
+  all_data['sol_Qfvalues']   = sol_Qfvalues
+  all_data['sol_Qtvalues']   = sol_Qtvalues
+  all_data['sol_GenPvalues'] = sol_GenPvalues
+  all_data['sol_GenQvalues'] = sol_GenQvalues
+  all_data['sol_IPvalues']   = sol_IPvalues
+  all_data['sol_IQvalues']   = sol_IQvalues
+  all_data['sol_allvars']    = sol_allvars
+
+  log.joint(' knitro solution loaded\n')
+
+  #log.joint(' sol_GenPvalues ' + str(sol_GenPvalues) + '\n')
+  #flowdecomp(log,all_data)
+
+  strictchecker(log,all_data)
+  exit(0)
+  
+
+def flowdecomp(log,all_data):
+  
+  buses          = all_data['buses']
+  branches       = all_data['branches']
+  gens           = all_data['gens']
+  IDtoCountmap   = all_data['IDtoCountmap']
+  all_data['fd_threshold'] = 1e-8
+
+  all_data['fd_flux'] = {}
+  paths                 = {}
+  Pd                    = {}
+  losses                = {}
+
+  for bus in buses.values():
+    buscount     = bus.count
+    Pd[buscount] = bus.Pd
+
+  all_data['fd_Pd']     = Pd
+  all_data['fd_loss']   = False
+  all_data['fd_cycle']  = False
+
+  sol_Pfvalues          = all_data['sol_Pfvalues']
+  sol_Ptvalues          = all_data['sol_Ptvalues']
+  sol_GenPvalues        = all_data['sol_GenPvalues']
+  
+  #log.joint(' GenPvalues before ' + str(sol_GenPvalues) + '\n')
+  #log.joint(' Pd before ' + str(Pd) + '\n')
+
+  totalgen_initial      = sum(sol_GenPvalues.values())
+  totaldemand_initial   = sum(Pd.values())
+
+  #log.joint(' initial total (net) generation ' + str(totalgen_initial) + '\n')
+  #log.joint(' initial total (net) demand ' + str(totaldemand_initial) + '\n')
+
+  ##########NET GENERATION
+
+  for genid in sol_GenPvalues.keys():
+    
+    gen      = gens[genid]
+    busid    = gen.nodeID 
+    buscount = IDtoCountmap[busid]
+    
+    if sol_GenPvalues[genid] >= Pd[buscount]:
+      sol_GenPvalues[genid] -= Pd[buscount]
+      Pd[buscount]           = 0
+    else:
+      Pd[buscount]          -= sol_GenPvalues[genid]
+      sol_GenPvalues[genid]  = 0
+
+  #log.joint(' GenPvalues after ' + str(sol_GenPvalues) + '\n')
+  #log.joint(' Pd after ' + str(Pd) + '\n')
+
+  ##########################
+
+  totalgen_initial      = sum(sol_GenPvalues.values())
+  totaldemand_initial   = sum(Pd.values())
+  
+  log.joint(' checking losses ...\n')
+
+  for branch in branches.values():
+
+    losses[branch] = sol_Pfvalues[branch] + sol_Ptvalues[branch]
+    log.joint(' loss at branch ' + str(branch.count) + ' : ' 
+              + str((sol_Pfvalues[branch] + sol_Ptvalues[branch])) + '\n')
+  
+  all_data['fd_losses'] = losses  
+  totallosses_initial = sum(losses.values())
+
+  log.joint(' initial total (net) generation ' + str(totalgen_initial) + '\n')
+  log.joint(' initial total (net) demand ' + str(totaldemand_initial) + '\n')
+  log.joint(' initial losses ' + str(totallosses_initial) + '\n')
+
+  #breakexit('check')
+
+  ################
+
+  log.joint(' initializing flow decomposition\n')
+
+  GP_values = np.fromiter(sol_GenPvalues.values(), dtype=float) 
+  GP_genids = np.fromiter(sol_GenPvalues.keys(), dtype=int)
+
+  #log.joint(' GP values ' + str(GP_values) + '\n')
+  #log.joint(' GP genids ' + str(GP_genids) + '\n')
+
+  sorting_array    = np.argsort(GP_values)[::-1]
+  sorted_GP_values = GP_values[sorting_array]
+  sorted_GP_genids = GP_genids[sorting_array]
+
+  all_data['fd_iteration'] = 0
+  threshold                  = 0.1
+  all_data['fd_numcycles'] = 0
+
+  while ((sum(all_data['fd_losses'].values()) 
+          + sum(Pd.values()) ) > threshold): # before loop sum(sorted_GP_values)
+    
+    all_data['fd_iteration'] += 1
+    
+    maxgen_genid = sorted_GP_genids[0]
+    maxgen_value = sorted_GP_values[0]
+    gen          = gens[maxgen_genid]
+    gen_nodeID   = gen.nodeID
+    buscount     = IDtoCountmap[gen_nodeID]
+    bus          = buses[buscount]
+
+
+    all_data['fd_maxgen_value'] = maxgen_value #new 
+    all_data['fd_done']         = False
+    all_data['fd_cycle']        = False
+    prepath                     = {}
+    pathlen                     = 0
+    nocycling                   = []
+    all_data['fd_push']         = 1e20
+
+    nocycling.append(gen_nodeID)
+
+    log.joint(' iter ' + str(all_data['fd_iteration']) + ' maxg: ' 
+              + str(maxgen_value) + ' at bus ' + str(gen_nodeID) + ' genid ' 
+              + str(maxgen_genid) + '\n')
+    
+    # Computing largest flow
+    while (all_data['fd_done'] == False):
+      pathlen += 1
+      nextbus_id, prepath, paths, nocycling = heavybranch(log,all_data,paths,bus,prepath,pathlen,threshold,nocycling)
+      if nextbus_id != 'cycle':
+        bus = buses[nextbus_id]
+
+    # Tracing paths/cycles and update demands and gen
+    if all_data['fd_cycle']:
+      all_data['fd_numcycles'] += 1
+      tracecycle(log,all_data)
+    else:
+      tracepath(log,all_data,Pd,prepath,gen)
+
+    # Update GP_values
+    if all_data['fd_cycle'] == False:
+      sorted_GP_genids, sorted_GP_values = updategeneration(log,all_data,gen,sorted_GP_values,sorted_GP_genids)
+
+    #breakexit('done w iteration')
+    log.joint(' -------------\n')
+
+  #log.joint('  sorted GP values ' + str(sorted_GP_values) + '\n')
+  #log.joint('  sorted GP genids ' + str(sorted_GP_genids) + '\n')
+
+  log.joint('  total gen ' + str(totalgen_initial) + '\n')
+  log.joint('  total processed gen (flowdecomp) ' + str(sum(sorted_GP_values)) + '\n')
+  log.joint('\n  total demand ' + str(totaldemand_initial) + '\n')
+  log.joint('  total processed demand (flowdecomp) ' + str(sum(all_data['fd_Pd'].values())) + '\n')
+  log.joint('\n  total losses ' + str(totallosses_initial) + '\n')
+  log.joint('  total processed losses (flowdecomp) ' + str(sum(all_data['fd_losses'].values())) + '\n')
+  #log.joint('  paths (flux) ' + str(all_data['fd_flux']) + '\n')
+
+  log.joint('\n')
+  flux    = sum(all_data['fd_flux'].values())
+  avgflux = flux/all_data['fd_iteration']
+
+  log.joint('  number of paths ' + str(all_data['fd_iteration']) + ' avg flux ' 
+            + str(avgflux) + '\n')
+
+  log.joint('  number of cycles ' + str(all_data['fd_numcycles']) + '\n')
+
+  #breakexit('c')
+
+def tracepath(log,all_data,Pd,prepath,gen):
+
+  IDtoCountmap          = all_data['IDtoCountmap']
+  branches              = all_data['branches']
+  sol_Pfvalues          = all_data['sol_Pfvalues']
+  sol_Ptvalues          = all_data['sol_Ptvalues']
+  prepathlen            = len(prepath)
+
+  log.joint('  now tracing path of length ' + str(prepathlen) + '\n')
+  #log.joint('  the prepath is ' + str(prepath) + '\n')
+
+  for item in prepath.values():
+    branchid = item[0]
+    kind     = item[2]
+    loss     = item[3]
+    branch   = branches[branchid]
+    
+    if kind == 'f' and loss == 0:
+      newPfvalue = sol_Pfvalues[branch] - all_data['fd_push']
+      newPtvalue = sol_Ptvalues[branch] + all_data['fd_push']
+      initialbus = branch.f
+      finalbus   = branch.t
+    elif kind == 't' and loss == 0:
+      newPfvalue = sol_Pfvalues[branch] + all_data['fd_push']
+      newPtvalue = sol_Ptvalues[branch] - all_data['fd_push']
+      initialbus = branch.t
+      finalbus = branch.f
+    elif kind == 'f' and loss:
+      newPfvalue = sol_Pfvalues[branch] - all_data['fd_push']
+      newPtvalue = sol_Ptvalues[branch]
+      initialbus = branch.f
+      finalbus = branch.t
+    elif kind == 't' and loss:
+      newPtvalue = sol_Ptvalues[branch] - all_data['fd_push']
+      newPfvalue = sol_Pfvalues[branch]
+      initialbus = branch.t
+      finalbus = branch.f
+      
+    log.joint('   bus ' + str(initialbus) + ' branch ' + str(branchid) + ' ' + str(branch.f)
+              + ' -> ' + str(branch.t) + ', kind: ' + kind + '\n')
+    #log.joint(' oldflows: ' + str(sol_Pfvalues[branch]) + ' ' + str(sol_Ptvalues[branch]) + '\n')
+    newloss = newPfvalue + newPtvalue
+
+    log.joint('   newflows: ' + str(newPfvalue) + ' ' + str(newPtvalue) 
+              + ' newloss ' + str(newloss) + '\n')
+
+    all_data['sol_Pfvalues'][branch] = newPfvalue
+    all_data['sol_Ptvalues'][branch] = newPtvalue
+    all_data['fd_losses'][branch]    = newloss
+
+  all_data['finalbus'] = finalbus
+
+  log.joint('  final bus: ' + str(finalbus) + '\n')
+
+
+def tracecycle(log,all_data):
+
+  IDtoCountmap          = all_data['IDtoCountmap']
+  branches              = all_data['branches']
+  sol_Pfvalues          = all_data['sol_Pfvalues']
+  sol_Ptvalues          = all_data['sol_Ptvalues']
+  cycle                 = all_data['thecycle']
+
+  log.joint('  now tracing cycle of length ' + str(len(cycle)) + '\n')
+  log.joint('  the cycle is ' + str(cycle) + '\n')
+
+  for item in cycle.values():
+    branchid = item[0]
+    kind     = item[2]
+    branch   = branches[branchid]
+    
+    if kind == 'f':
+      newPfvalue = sol_Pfvalues[branch] - all_data['cycle_flow']
+      newPtvalue = sol_Ptvalues[branch] + all_data['cycle_flow']
+      initialbus = branch.f
+      finalbus   = branch.t
+    elif kind == 't':
+      newPfvalue = sol_Pfvalues[branch] + all_data['cycle_flow']
+      newPtvalue = sol_Ptvalues[branch] - all_data['cycle_flow'] #HOMOGENEIZE
+      initialbus = branch.t
+      finalbus = branch.f
+      
+    log.joint('   bus ' + str(initialbus) + ' branch ' + str(branchid) + ' ' + str(branch.f)
+              + ' -> ' + str(branch.t) + ', kind: ' + kind + '\n')
+    #log.joint(' oldflows: ' + str(sol_Pfvalues[branch]) + ' ' + str(sol_Ptvalues[branch]) + '\n')
+    newloss = newPfvalue + newPtvalue
+
+    log.joint('   newflows: ' + str(newPfvalue) + ' ' + str(newPtvalue) + '\n')
+
+    all_data['sol_Pfvalues'][branch] = newPfvalue
+    all_data['sol_Ptvalues'][branch] = newPtvalue
+    all_data['fd_push'] = all_data['cycle_flow']
+
+  breakexit('c')
+
+def updategeneration(log,all_data,gen,sorted_GP_values,sorted_GP_genids):
+
+  IDtoCountmap          = all_data['IDtoCountmap']
+  branches              = all_data['branches']
+  Pd                    = all_data['fd_Pd']
+  finalbus              = all_data['finalbus']
+  finalbus_id           = IDtoCountmap[finalbus]
+  
+  maxgen_value = sorted_GP_values[0]
+  maxgen_genid = gen.count
+  
+  newmaxgen_value  = maxgen_value - all_data['fd_push']
+  if newmaxgen_value < 0:
+    log.joint(' negative maxgen\n')
+    breakexit(' check!!')
+
+  if all_data['fd_loss'] == False: #check this!!!!
+    proxy_newdemand = Pd[finalbus_id] - all_data['fd_push']
+    if proxy_newdemand < 0:
+      Pd[finalbus_id] = 0
+    else:
+      Pd[finalbus_id] = proxy_newdemand
+  else:
+    all_data['fd_loss'] = False
+
+  log.joint('  now generation at ' + str(gen.nodeID) + ' : ' 
+            + str(newmaxgen_value) + ', demand at ' 
+            + str(all_data['finalbus']) + ' : ' + str(Pd[finalbus_id]) 
+            + '\n')
+
+  sorted_GP_values[0] = newmaxgen_value 
+  sorting_array       = np.argsort(sorted_GP_values)[::-1]
+  sorted_GP_values    = sorted_GP_values[sorting_array]
+  sorted_GP_genids    = sorted_GP_genids[sorting_array]
+
+
+  return sorted_GP_genids, sorted_GP_values
+
+
+def catchcycle(log,all_data,bus,prepath,pathlen,threshold,nocycling):
+
+  IDtoCountmap          = all_data['IDtoCountmap']
+  branches              = all_data['branches']
+  branches_from         = bus.frombranchids.values()
+  branches_to           = bus.tobranchids.values()
+  sol_Pfvalues          = all_data['sol_Pfvalues']
+  sol_Ptvalues          = all_data['sol_Ptvalues']
+  Pd                    = all_data['fd_Pd']
+
+  largestflow_value    = 0
+  largestflow_branchid = -1
+  largestflow_kind     = 'foo'
+  largestflow_nextbus  = 'foo2'
+
+  log.joint(' pass to catch cycle!\n')
+
+  for branchid in branches_from:
+    branch = branches[branchid]
+    log.joint(' branch ' + str(branchid) + ' f ' + str(branch.f) 
+              + ' t ' + str(branch.t) + ' Pf ' + str(sol_Pfvalues[branch]) 
+              + ' Pt ' + str(sol_Ptvalues[branch]) + '\n')
+
+    if (sol_Pfvalues[branch] > largestflow_value  
+        and branch.t in nocycling):
+
+      largestflow_value    = sol_Pfvalues[branch]
+      largestflow_branchid = branchid
+      largestflow_kind     = 'f'
+      largestflow_nextbus  = branch.t
+      largestflow_nextbus_id = IDtoCountmap[branch.t]
+
+  for branchid in branches_to:
+    branch = branches[branchid]
+
+    log.joint(' branch ' + str(branchid) + ' f ' + str(branch.f) 
+              + ' t ' + str(branch.t) + ' Pt ' + str(sol_Ptvalues[branch]) 
+              + ' Pf ' + str(sol_Pfvalues[branch]) + '\n')
+
+    if (sol_Ptvalues[branch] > largestflow_value 
+        and branch.f in nocycling):
+
+      largestflow_value     = sol_Ptvalues[branch]
+      largestflow_branchid  = branchid
+      largestflow_kind      = 't'
+      largestflow_nextbus   = branch.f
+      largestflow_nextbus_id = IDtoCountmap[branch.f] 
+  
+
+  cycle    = {}  
+  cycle[0] = (largestflow_branchid,largestflow_value,largestflow_kind,0)
+  all_data['cycle_flow'] = largestflow_value
+
+  log.joint(' cycle is given by:\n')  
+  log.joint(' pathlen ' + str(pathlen) + '\n')
+  log.joint(' first bus in cycle, bus id ' + str(largestflow_nextbus) + '\n') 
+  
+  branch = branches[largestflow_branchid]
+  
+  log.joint(' arc0 branchid ' + str(largestflow_branchid) + ' Pf ' + str(sol_Pfvalues[branch])
+            + ' Pt ' + str(sol_Ptvalues[branch]) + '\n')
+
+  i           = pathlen - 1
+  cycle_count = 1
+
+  while i <= pathlen:
+    
+    busid = nocycling[i]
+
+    if busid != largestflow_nextbus:
+      arc    = prepath[i]
+      branch = branches[arc[0]]
+      flow   = arc[1]
+      log.joint(' arc ' + str(arc) + ' branchid ' + str(arc[0]) 
+                + ' f ' + str(branch.f) + ' t ' + str(branch.t) + '\n')
+      
+      cycle[cycle_count] = arc
+      if all_data['cycle_flow'] > flow:
+        all_data['cycle_flow'] = flow
+
+      log.joint(' ' + str(pathlen - i + 1) + 'th bus in cycle, bus id ' + str(busid) + '\n') 
+      i           -= 1
+      cycle_count += 1
+      
+    else:
+      break
+
+  log.joint(' cycle ' + str(cycle) + '\n')
+
+  breakexit('c')
+
+  if largestflow_value < 0:
+    log.joint(' check, something off\n')
+    breakexit('something off')
+
+  log.joint('  push will be ' + str(all_data['cycle_flow']) + ' through cycle\n')
+
+  all_data['fd_done']   = True
+  all_data['thecycle']  = cycle
+
+def heavybranch(log,all_data,paths,bus,prepath,pathlen,threshold,nocycling):
+
+  IDtoCountmap          = all_data['IDtoCountmap']
+  branches              = all_data['branches']
+  branches_from         = bus.frombranchids.values()
+  branches_to           = bus.tobranchids.values()
+  sol_Pfvalues          = all_data['sol_Pfvalues']
+  sol_Ptvalues          = all_data['sol_Ptvalues']
+  Pd                    = all_data['fd_Pd']
+
+  largestflow_value    = 0
+  largestflow_branchid = -1
+  largestflow_kind     = 'foo'
+  largestflow_nextbus  = 'foo2'
+
+  # log.joint(' branches from ' + str(branches_from) +  ' at bus ' 
+  #           + str(bus.nodeID) + '\n')
+
+  # log.joint(' branches to ' + str(branches_to) +  ' at bus ' 
+  #           + str(bus.nodeID) + '\n')
+
+  for branchid in branches_from:
+    branch = branches[branchid]
+    log.joint(' branch ' + str(branchid) + ' f ' + str(branch.f) 
+              + ' t ' + str(branch.t) + ' Pf ' + str(sol_Pfvalues[branch]) + '\n')
+
+    if (sol_Pfvalues[branch] > largestflow_value  
+        and branch.t not in nocycling):
+
+      largestflow_value    = math.fabs(sol_Pfvalues[branch])
+      largestflow_branchid = branchid
+      largestflow_kind     = 'f'
+      largestflow_nextbus  = branch.t
+      largestflow_nextbus_id = IDtoCountmap[branch.t]
+
+  for branchid in branches_to:
+    branch = branches[branchid]
+
+    log.joint(' branch ' + str(branchid) + ' f ' + str(branch.f) 
+              + ' t ' + str(branch.t) + ' Pt ' + str(sol_Ptvalues[branch]) + '\n')
+
+    if (sol_Ptvalues[branch] > largestflow_value 
+        and branch.f not in nocycling):
+
+      largestflow_value     = math.fabs(sol_Ptvalues[branch])
+      largestflow_branchid  = branchid
+      largestflow_kind      = 't'
+      largestflow_nextbus   = branch.f
+      largestflow_nextbus_id = IDtoCountmap[branch.f] 
+      
+  if largestflow_branchid == -1:
+    log.joint(' deal with the cycle!\n')
+    all_data['fd_cycle'] = True
+    log.joint(' prepath ' + str(prepath) + '\n')
+    log.joint(' no cycling list ' + str(nocycling) + '\n')
+      
+    breakexit(' there is a cycle!' )
+    catchcycle(log,all_data,bus,prepath,pathlen,threshold,nocycling)
+    
+    breakexit('check again')
+    return 'cycle', prepath, paths, nocycling
+
+    
+  log.joint(' largestflow branchid ' + str(largestflow_branchid) + '\n')
+  largestflow_branch = branches[largestflow_branchid]
+  largestflow_loss   = sol_Pfvalues[largestflow_branch] + sol_Ptvalues[largestflow_branch]
+
+  nocycling.append(largestflow_nextbus)
+
+  if largestflow_value < 0:
+    log.joint(' check, something off\n')
+    breakexit('something off')
+
+  if largestflow_value < all_data['fd_push']:
+    all_data['fd_push'] = largestflow_value
+
+  if all_data['fd_maxgen_value'] < all_data['fd_push']: # new
+    all_data['fd_push'] = all_data['fd_maxgen_value']
+
+  log.joint('  largest flow ' + str(largestflow_value) + ' at branch '
+            + str(largestflow_branchid) + ' kind ' + str(largestflow_kind)
+            + '\n')
+
+  log.joint('   next bus: ' + str(largestflow_nextbus) + ' d: ' 
+            + str(Pd[largestflow_nextbus_id]) 
+            + ' loss : ' + str(largestflow_loss) + '\n')
+
+  if largestflow_loss > all_data['fd_threshold']:
+    log.joint('  hit loss at branch ' + str(largestflow_branchid) 
+              + ' currloss: ' + str(largestflow_loss) + '\n')
+
+    if all_data['fd_push'] - largestflow_loss > 0:
+      all_data['fd_push'] = largestflow_loss
+
+    log.joint('  push will be ' + str(all_data['fd_push']) + '\n')
+
+    all_data['fd_flux'][all_data['fd_iteration']] = pathlen * all_data['fd_push']
+    prepath[pathlen] = (largestflow_branchid,largestflow_value,largestflow_kind,1)
+
+    all_data['fd_done'] = True
+    all_data['fd_loss'] = True
+
+    return largestflow_nextbus_id, prepath, paths, nocycling
+
+  elif Pd[largestflow_nextbus_id] > 0: 
+    log.joint('  hit load at bus ' + str(largestflow_nextbus) 
+              + ' currdemand: ' + str(Pd[largestflow_nextbus_id]) + '\n')
+
+    if all_data['fd_push'] - Pd[largestflow_nextbus_id] > 0:
+      all_data['fd_push'] = Pd[largestflow_nextbus_id]
+
+    log.joint('  push will be ' + str(all_data['fd_push']) + '\n')
+
+    all_data['fd_flux'][all_data['fd_iteration']] = pathlen * all_data['fd_push']
+   
+    prepath[pathlen] = (largestflow_branchid,largestflow_value,largestflow_kind,0)
+                       
+    all_data['fd_done'] = True
+
+    return largestflow_nextbus_id, prepath, paths, nocycling
+  else:
+    log.joint('   moved to bus ' + str(largestflow_nextbus) + '\n')
+
+    prepath[pathlen] = (largestflow_branchid,largestflow_value,largestflow_kind,0)
+                         
+    return largestflow_nextbus_id, prepath, paths, nocycling
+    
+
+def randombranch(log,all_data):
+
+  IDtoCountmap = all_data['IDtoCountmap']
+  branches     = all_data['branches']
+  numbranches  = all_data['numbranches'] 
+  buses        = all_data['buses']
+  themodel     = all_data['themodel']
+
+  #pick a random branch
+  randombranch = random.randrange(1,numbranches+1)
+  branch       = branches[randombranch]
+
+  while branch.status == 0:
+      randombranch = random.randrange(1,numbranches+1)
+      branch       = branches[randombranch]
+
+  f          = branch.f
+  t          = branch.t
+  constrname = "jabr_"+str(randombranch)+"_"+str(f)+"_"+str(t)
+  busf       = buses[IDtoCountmap[f]]
+  bust       = buses[IDtoCountmap[t]]
+  Vmaxf      = busf.Vmax
+  Vmaxt      = bust.Vmax
+  jabrbound  = 2*( (Vmaxf**2) * (Vmaxt**2) )
+
+  log.joint(' changing RHS of Jabr ' + str(randombranch) + ' to ' 
+            + str(jabrbound) + '\n')
+
+  themodel.write("check.lp")
+
+  constrs = themodel.getQConstrs()
+
+  log.joint(' constrs ' + str(constrs) + '\n')
+  
+  constr = constrs[randombranch]
+
+  log.joint(' the constr ' + str(constr) + '\n')
+  #constr = themodel.getqconstrbyname(constrname)
+
+  constr.setAttr("QCRHS",jabrbound)
+  #constr.setAttr("QCRHS",0)
+
+  themodel.update()
+
+  themodel.write("check.lp")
+
+  log.joint(' resolving SOCP ...\n')
+
+  return randombranch
+
+
+
+def strictchecker(log,all_data):
+  
+  log.joint(' initializing strict checker ...\n')
+
+  buses          = all_data['buses']
+  branches       = all_data['branches']
+  gens           = all_data['gens']
+  IDtoCountmap   = all_data['IDtoCountmap']
+  sol_Pfvalues   = all_data['sol_Pfvalues']
+  sol_Ptvalues   = all_data['sol_Ptvalues']
+  sol_Qfvalues   = all_data['sol_Qfvalues']
+  sol_Qtvalues   = all_data['sol_Qtvalues']
+  sol_GenPvalues = all_data['sol_GenPvalues']
+  sol_GenQvalues = all_data['sol_GenQvalues']
+  sol_vm         = all_data['sol_vm']    
+  sol_angle      = all_data['sol_angle']
+  sol_cvalues    = all_data['sol_cvalues']
+  sol_svalues    = all_data['sol_svalues']
+  sol_evalues    = all_data['sol_evalues'] 
+  sol_fvalues    = all_data['sol_fvalues'] 
+  sol_allvars    = all_data['sol_allvars'] 
+
+  log.joint(' now reading QCQP ...\n')
+
+  qcqpfilename = 'qcqps/qcqp_' + all_data['casename'] + '.lp'
+  qcqpmodel    = all_data['qcqpmodel'] = read(qcqpfilename)
+
+  qcqp_LContrs  = qcqpmodel.getConstrs()
+  qcqp_QConstrs = qcqpmodel.getQConstrs()
+
+  max_violation_string = 'none'
+  max_violation_value  = 0
+
+  all_data['violation'] = {}
+
+  vmagviol        = all_data['violation']['vmagviol']    = {}
+  GPviol          = all_data['violation']['GPviol']      = {}
+  GQviol          = all_data['violation']['GQviol']      = {}
+  branchlimitviol = all_data['violation']['branchlimit'] = {}
+  Pdefviol        = all_data['violation']['Pdef']        = {}
+  Qdefviol        = all_data['violation']['Qdef']        = {}
+  PBalviol        = all_data['violation']['PBalviol']    = {}
+  QBalviol        = all_data['violation']['QBalviol']    = {}
+
+  log.joint(' checking violation of variable bounds ...\n')
+
+  #log.joint('  voltages\n')
+  
+  max_vmagviol_string = 'none'
+  max_vmagviol_value  = 0
+
+  for bus in buses.values():
+    
+    name     = 'bus_' + str(bus.nodeID)
+    value    = sol_vm[bus]
+    viol_max = 0
+    viol_min = 0
+
+    if value > bus.Vmax:
+      viol_max = value - bus.Vmax
+
+    if value < bus.Vmin:
+      viol_min = value - bus.Vmin
+
+    if viol_max > viol_min:
+      viol = viol_max
+    else:
+      viol = viol_min
+
+    vmagviol[bus] = viol
+    
+    if viol > max_vmagviol_value:
+      max_vmagviol_value  = viol
+      max_vmagviol_string = name
+
+  log.joint('  max violation of voltage magnitude ' 
+            + str(max_vmagviol_value) 
+            + ' at ' + max_vmagviol_string + '\n')
+
+  if max_vmagviol_value > max_violation_value:
+    max_violation_value  = max_vmagviol_value
+    max_violation_string = max_vmagviol_string
+
+  #log.joint('  GP and GQ\n')
+
+  max_GPviol_string = 'none'
+  max_GPviol_value  = 0
+
+  max_GQviol_string = 'none'
+  max_GQviol_value  = 0
+
+  for gen in gens.values():
+    genid    = gen.count
+    busid    = gen.nodeID
+    bus      = buses[IDtoCountmap[busid]]
+
+    if bus.nodetype == 3 or gen.status == 0: # slack bus, we skip it
+      continue
+
+    gen_name = 'gen_' + str(genid) + '_' + str(busid)
+    GPvalue  = sol_GenPvalues[genid]
+    GQvalue  = sol_GenQvalues[genid]
+
+    GPviol_max = max(GPvalue - gen.Pmax,0)
+    GPviol_min = max(gen.Pmin - GPvalue,0)
+
+    if GPviol_max > GPviol_min:
+      GPviol_value = GPviol_max
+    else:
+      GPviol_value = GPviol_min
+
+    GPviol[gen] = GPviol_value
+
+    if GPviol_value > max_GPviol_value:
+      max_GPviol_value  = GPviol_value
+      max_GPviol_string = gen_name 
+
+    GQviol_max = max(GQvalue - gen.Qmax,0)
+    GQviol_min = max(gen.Qmin - GQvalue,0)
+
+    if GQviol_max > GQviol_min:
+      GQviol_value = GQviol_max
+    else:
+      GQviol_value = GQviol_min
+
+    GQviol[gen] = GQviol_value
+
+    if GQviol_value > max_GQviol_value:
+      max_GQviol_value  = GQviol_value
+      max_GQviol_string = gen_name 
+    
+    if gen.status == 0 and (GPvalue != 0 or GQvalue != 0):
+      log.joint(' gen status is 0 but gen has output, BUG\n')
+      breakexit('check')
+      
+  log.joint('  max violation active power gen ' 
+            + str(max_GPviol_value) 
+            + ' at ' + max_GPviol_string + '\n')
+  log.joint('  max violation reactive power gen ' 
+            + str(max_GQviol_value) 
+            + ' at ' + max_GQviol_string + '\n')
+
+  if max_GPviol_value > max_violation_value:
+    max_violation_value  = max_GPviol_value
+    max_violation_string = max_GPviol_string
+
+  if max_GQviol_value > max_violation_value:
+    max_violation_value  = max_GQviol_value
+    max_violation_string = max_GQviol_string
+
+  # for gen in gens.values():
+  #   log.joint(' gen ' + str(gen.count) + ' at bus ' + str(gen.nodeID)
+  #             + ' GP ' + str(sol_GenPvalues[gen.count])
+  #             + ' GQ ' + str(sol_GenQvalues[gen.count]) + '\n')
+
+  #   log.joint(' gen ' + str(gen.count) + ' at bus ' + str(gen.nodeID) 
+  #             + ' Pmax ' + str(gen.Pmax) + ' Pmin ' + str(gen.Pmin) 
+  #             + ' Qmax ' + str(gen.Qmax) + ' Qmin ' + str(gen.Qmin) + '\n')
+  # log.joint(' Pdic ' + str(sol_GenPvalues) + '\n')
+  # log.joint(' Qdic ' + str(sol_GenQvalues) + '\n')
+              
+
+  log.joint(' checking violations of constraints ...\n')
+
+  #log.joint('  power flow defintions\n')
+
+  max_Pdefviol_string = 'none'
+  max_Pdefviol_value  = 0
+
+  max_Qdefviol_string = 'none'
+  max_Qdefviol_value  = 0
+
+  for branch in branches.values():
+    branchid       = branch.count
+    branch_f       = branch.f
+    branch_t       = branch.t
+    count_of_f     = IDtoCountmap[branch_f]
+    bus_f          = buses[count_of_f]
+
+    Pdefconstrname_f = 'Pdef_' + str(branchid) + '_' + str(branch_f) + '_' + str(branch_t)
+    Pdefconstrname_t = 'Pdef_' + str(branchid) + '_' + str(branch_t) + '_' + str(branch_f)
+    Qdefconstrname_f = 'Qdef_' + str(branchid) + '_' + str(branch_f) + '_' + str(branch_t)
+    Qdefconstrname_t = 'Qdef_' + str(branchid) + '_' + str(branch_t) + '_' + str(branch_f)
+    
+    Pdef_f = qcqpmodel.getConstrByName(Pdefconstrname_f)    
+    Pdefviol_f, Pdefviol_f_string = checkviol_linear(log,all_data,Pdef_f,Pdefconstrname_f)
+
+    Pdef_t = qcqpmodel.getConstrByName(Pdefconstrname_t)
+    Pdefviol_t, Pdefviol_t_string = checkviol_linear(log,all_data,Pdef_t,Pdefconstrname_t)
+    
+    if Pdefviol_f > Pdefviol_t:
+      Pdefviol_value   = Pdefviol_f
+      Pdefviol_string  = Pdefviol_f_string
+      Pdefviol[branch] = Pdefviol_value
+    else:
+      Pdefviol_value   = Pdefviol_t
+      Pdefviol_string  = Pdefviol_t_string
+      Pdefviol[branch] = Pdefviol_value
+
+    if Pdefviol_value > max_Pdefviol_value:
+      max_Pdefviol_string  = Pdefviol_string
+      max_Pdefviol_value   = Pdefviol_value
+
+    Qdef_f = qcqpmodel.getConstrByName(Qdefconstrname_f)
+    Qdefviol_f, Qdefviol_f_string = checkviol_linear(log,all_data,Qdef_f,Qdefconstrname_f)
+
+    Qdef_t = qcqpmodel.getConstrByName(Qdefconstrname_t)
+    Qdefviol_t, Qdefviol_t_string = checkviol_linear(log,all_data,Qdef_t,Qdefconstrname_t)
+
+    if Qdefviol_f > Qdefviol_t:
+      Qdefviol_value   = Qdefviol_f
+      Qdefviol_string  = Qdefviol_f_string
+      Qdefviol[branch] = Qdefviol_value
+    else:
+      Qdefviol_value   = Qdefviol_t
+      Qdefviol_string  = Qdefviol_t_string
+      Qdefviol[branch] = Qdefviol_value
+
+    if Qdefviol_value > max_Qdefviol_value:
+      max_Qdefviol_string  = Qdefviol_string
+      max_Qdefviol_value   = Qdefviol_value
+
+  log.joint('  max violation of active power flow definitions ' 
+            + str(max_Pdefviol_value) + ' at ' + max_Pdefviol_string + '\n')
+  log.joint('  max violation of reactive power flow definitions ' 
+            + str(max_Qdefviol_value) + ' at ' + max_Qdefviol_string + '\n')
+
+  if max_Pdefviol_value > max_violation_value:
+    max_violation_value  = max_Pdefviol_value
+    max_violation_string = max_Pdefviol_string
+
+  if max_Qdefviol_value > max_violation_value:
+    max_violation_value  = max_Qdefviol_value
+    max_violation_string = max_Qdefviol_string
+  
+  #log.joint('  power balance\n')
+
+  max_PBalviol_string  = 'none'
+  max_PBalviol_value = 0
+
+  max_QBalviol_string  = 'none'
+  max_QBalviol_value = 0
+
+  for bus in buses.values():
+    busid       = bus.nodeID
+    buscount    = bus.count
+
+    PBalconstrname = 'PBaldef' + str(buscount) + '_' + str(busid) 
+    QBalconstrname = 'QBaldef' + str(buscount) + '_' + str(busid) 
+
+    #log.joint(' constrname ' + PBalconstrname + '\n')
+    PBalconstr = qcqpmodel.getConstrByName(PBalconstrname)
+
+    PBalviol_value, PBalviol_string = checkviol_linear(log,all_data,PBalconstr,PBalconstrname)
+
+    PBalviol[bus] = PBalviol_value
+
+    if PBalviol_value > max_PBalviol_value:
+      max_PBalviol_value = PBalviol_value
+      max_PBalviol_string = PBalviol_string
+
+    QBalconstr = qcqpmodel.getConstrByName(QBalconstrname)
+    QBalviol_value, QBalviol_string = checkviol_linear(log,all_data,QBalconstr,QBalconstrname)
+
+    QBalviol[bus] = QBalviol_value
+
+    if QBalviol_value > max_QBalviol_value:
+      max_QBalviol_value = QBalviol_value
+      max_QBalviol_string = QBalviol_string
+
+  log.joint('  max violation of active power balance constraints ' 
+            + str(max_PBalviol_value) + ' at ' + max_PBalviol_string + '\n')
+  log.joint('  max violation of reactive power balance constraints ' 
+            + str(max_QBalviol_value) + ' at ' + max_QBalviol_string + '\n')
+
+  if max_PBalviol_value > max_violation_value:
+    max_violation_value  = max_PBalviol_value
+    max_violation_string = max_PBalviol_string
+
+  if max_QBalviol_value > max_violation_value:
+    max_violation_value  = max_QBalviol_value
+    max_violation_string = max_QBalviol_string
+
+  #log.joint('  branch limits\n')
+
+  max_branchviol_string = 'none'
+  max_branchviol_value  = 0
+
+  for branch in branches.values():
+    
+    fromvalue = math.sqrt(sol_Pfvalues[branch]*sol_Pfvalues[branch] + 
+                          sol_Qfvalues[branch]*sol_Qfvalues[branch])
+    fromviol  = max(fromvalue - branch.limit,0)
+
+    tovalue   = math.sqrt(sol_Ptvalues[branch]*sol_Ptvalues[branch] + 
+                          sol_Qtvalues[branch]*sol_Qtvalues[branch])
+    toviol    = max(tovalue - branch.limit,0)
+
+    if fromviol > toviol:
+      thisviol   = fromviol
+      branchname = 'branch_'+str(branch.count)+'_from'
+      branchlimitviol[branch] = thisviol
+    else:
+      thisviol = toviol
+      branchname = 'branch_'+str(branch.count)+'_to'
+      branchlimitviol[branch] = thisviol
+
+    if thisviol > max_branchviol_value:
+      max_branchviol_value  = thisviol
+      max_branchviol_string = branchname
+  
+  log.joint('  max violation branchlimits ' 
+            + str(max_branchviol_value) 
+            + ' at ' + max_branchviol_string + '\n')
+
+  if max_branchviol_value > max_violation_value:
+    max_violation_value  = max_branchviol_value
+    max_violation_string = max_branchviol_string
+
+  log.joint(' max violation ' + str(max_violation_value) + ' at ' 
+            + max_violation_string + '\n')
+
+
+  breakexit('end checker')
+
+  # log.joint(' checking volt2 variables ...\n')
+  
+  # max_v2viol      = 0
+  # max_v2viol_name = ''
+
+  # for bus in buses.values():
+  #   expr_val = math.fabs(sol_cvalues[bus] - sol_evalues[bus] * sol_evalues[bus] - sol_fvalues[bus] * sol_fvalues[bus])
+
+  #   if expr_val > max_v2viol:
+  #     max_v2viol      = expr_val
+  #     max_v2viol_name = 'cbusdef_' + str(bus.nodeID) + '_' + str(bus.nodeID)
+  
+  # log.joint('  max violation of volt2 ' + str(max_v2viol)
+  #           + ' at ' + max_v2viol_name + '\n')
+
+  # log.joint(' checking e,f variables ...\n')
+  
+  # max_efviol      = 0
+  # max_efviol_name = ''
+
+  # for branch in branches.values():
+    
+  #   branch_f   = branch.f
+  #   branch_t   = branch.t
+  #   count_of_f = IDtoCountmap[branch_f]
+  #   count_of_t = IDtoCountmap[branch_t]
+  #   bus_f      = buses[count_of_f]
+  #   bus_t      = buses[count_of_t]
+    
+  #   expr_val_c = math.fabs(sol_cvalues[branch] - sol_evalues[bus_f] * sol_evalues[bus_t] - sol_fvalues[bus_f] * sol_fvalues[bus_t])
+  #   expr_val_s = math.fabs(sol_svalues[branch] + sol_evalues[bus_f] * sol_fvalues[bus_t] - sol_evalues[bus_t] * sol_fvalues[bus_f])
+
+  #   if expr_val_c > max_efviol:
+  #     max_efviol      = expr_val_c
+  #     max_efviol_name = 'cdef_' + str(branch.count) + '_' + str(bus.nodeID) + '_' + str(bus.nodeID)
+  
+  #   if expr_val_s > max_efviol:
+  #     max_efviol      = expr_val_s
+  #     max_efviol_name = 'sdef_' + str(branch.count) + '_' + str(bus.nodeID) + '_' + str(bus.nodeID)
+
+  # log.joint('  max violation of cs variables (ef) ' + str(max_efviol)
+  #           + ' at ' + max_efviol_name + '\n')
+  
+
+def checkviol_linear(log,all_data,constr,constr_string):
+
+  sol_allvars = all_data['sol_allvars']
+  qcqpmodel   = all_data['qcqpmodel']
+  lhs         = qcqpmodel.getRow(constr)
+  rhs         = constr.RHS
+  expr_size   = lhs.size()
+  expr_val    = 0 
+    
+  for k in range(expr_size):
+    var       = lhs.getVar(k)
+    varname   = var.varname
+    coeff     = lhs.getCoeff(k)
+    if varname not in sol_allvars.keys():
+      log.joint(' the status of ' + varname + ' is 0, we skip it\n')
+      continue
+    expr_val += coeff * sol_allvars[varname]
+  
+  if constr.Sense == '=':
+    viol      = math.fabs(expr_val - rhs)
+  elif constr.Sense == '>':
+    viol      = max(0,rhs - expr_val)
+  elif constr.Sense == '<':
+    viol      = max(0,expr_val - rhs)
+
+  viol_string = constr_string
+
+  return viol, constr_string
+
+
 
 
